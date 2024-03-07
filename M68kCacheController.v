@@ -7,7 +7,7 @@
 // Copyright PJ Davies August 2017
 ///////////////////////////////////////////////////////////////////////////////////////
 
-module M68kCacheController_Verilog (
+module M68kCacheController (
 		input Clock,											// used to drive the state machine - state changes occur on positive edge
 		input Reset_L,     									// active low reset 
 		input CacheHit_H,										// high when cache contains matching address during read
@@ -43,8 +43,8 @@ module M68kCacheController_Verilog (
 		output reg ValidBit_WE_L,												// to store a valid bit
 		
 		output reg unsigned [31:0] AddressBusOutToDramController,  	// address bus from Cache to Dram controller
-		//output reg unsigned [22:0] TagDataOut,  							// tag data to store in the tag Cache
-		output reg unsigned [18:0] TagDataOut,
+		output reg unsigned [22:0] TagDataOut,  							// tag data to store in the tag Cache
+		//output reg unsigned [18:0] TagDataOut,
 		output reg unsigned [2:0] WordAddress,								// upto 8 bytes in a Cache line
 		output reg ValidBitOut_H,												// indicates the cache line is valid
 		//output reg unsigned [8:4] Index,										// 5 bit index in this example cache

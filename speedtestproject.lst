@@ -1,0 +1,2418 @@
+680x0 MACRO ASSEMBLER   Version 5.00   (c) 1992-2005 Peter J. Fondse
+
+Date: 06 Mar 2024      Time: 14:55:45          Source: C:\M68KV6.0 - 800BY480\SPEEDTESTPROJECT.SRC
+
+                       1          section   code
+                       2   ; C:\USERS\PARSA\DESKTOP\CPEN412\SPEEDTEST.C - Compiled by CC68K  Version 5.00 (c) 1991-2005  Peter J. Fondse
+                       3   ; #include <stdio.h>
+                       4   ; /*********************************************************************************************
+                       5   ; **	RS232 port addresses defined as pointers
+                       6   ; *********************************************************************************************/
+                       7   ; #define RS232_Control     (*(volatile unsigned char *)(0x00400040))
+                       8   ; #define RS232_Status      (*(volatile unsigned char *)(0x00400040))
+                       9   ; #define RS232_TxData      (*(volatile unsigned char *)(0x00400042))
+                      10   ; #define RS232_RxData      (*(volatile unsigned char *)(0x00400042))
+                      11   ; #define RS232_Baud        (*(volatile unsigned char *)(0x00400044))
+                      12   ; /*********************************************************************************************
+                      13   ; **  Subroutine to initialise the RS232 Port by writing some commands to the internal registers
+                      14   ; **	Call this function at the start of the program before you attempt to read or write to hyperterminal
+                      15   ; *********************************************************************************************/
+                      16   ; void Init_RS232(void)
+                      17   ; {
+                      18   _Init_RS232:
+                      19   ; RS232_Control = 0x15 ; //  %00010101 set up serial port to use divide by 16 clock, set RTS low, 8 bits no parity, 1 stop bit, transmitter interrupt disabled
+00000000  13FC 0015   20          move.b    #21,4194368
+00000004  0040 0040 
+                      21   ; RS232_Baud = 0x1 ;      // program serial port speed: 000 = 230 kbaud, 001 = 115k, 010 = 57.6k, 011 = 38.4k, 100 = 19.2, all others = 9600
+00000008  13FC 0001   22          move.b    #1,4194372
+0000000C  0040 0044 
+00000010  4E75        23          rts
+                      24   ; }
+                      25   ; /*********************************************************************************************************
+                      26   ; **  Subroutine to provide a low level output function to 6850 ACIA
+                      27   ; **  This routine provides the basic functionality to output a single character to the serial Port
+                      28   ; **  to allow the board to communicate with HyperTerminal Program
+                      29   ; **
+                      30   ; **  NOTE you do NOT call this function directly, instead  call the normal putchar() function
+                      31   ; **  which in turn calls _putch() below.
+                      32   ; **
+                      33   ; **	Other functions like puts(), printf() call putchar() so will
+                      34   ; **  call _putch() below so it's fully integrates into the C standard library routines
+                      35   ; *********************************************************************************************************/
+                      36   ; int _putch(int c)
+                      37   ; {
+                      38   __putch:
+00000012  4E56 0000   39          link      A6,#0
+                      40   ; // write the character to the RS232 port first - comment out if not wanted
+                      41   ; while((RS232_Status & (char)(0x02)) != (char)(0x02))    // wait for Tx bit in status register or 6850 serial comms chip to be '1'
+                      42   _putch_1:
+00000016  1039 0040   43          move.b    4194368,D0
+0000001A  0040      
+0000001C  C03C 0002   44          and.b     #2,D0
+00000020  0C00 0002   45          cmp.b     #2,D0
+00000024  6702        46          beq.s     _putch_3
+00000026  60EE        47          bra       _putch_1
+                      48   _putch_3:
+                      49   ; ;
+                      50   ; RS232_TxData = (c & (char)(0x7f));                      // write to the data register to output the character (mask off bit 8 to keep it 7 bit ASCII)
+00000028  202E 0008   51          move.l    8(A6),D0
+0000002C  C0BC 0000   52          and.l     #127,D0
+00000030  007F      
+00000032  13C0 0040   53          move.b    D0,4194370
+00000036  0042      
+                      54   ; return c ;                                              // putchar() expects the character to be returned
+00000038  202E 0008   55          move.l    8(A6),D0
+0000003C  4E5E        56          unlk      A6
+0000003E  4E75        57          rts
+                      58   ; }
+                      59   ; /*********************************************************************************************************
+                      60   ; **  Subroutine to provide a low level input function to 6850 ACIA
+                      61   ; **  This routine provides the basic functionality to input a single character from the serial Port
+                      62   ; **  to allow the board to communicate with HyperTerminal Program Keyboard (your PC)
+                      63   ; **
+                      64   ; **  NOTE you do not call this function directly, instead you call the normal getchar() function
+                      65   ; **  which in turn calls _getch() below).
+                      66   ; **	Other functions like gets(), scanf() call getchar() so will
+                      67   ; **  call _getch() below so it's fully integrates into the C standard library routines
+                      68   ; *********************************************************************************************************/
+                      69   ; int _getch( void )
+                      70   ; {
+                      71   __getch:
+                      72   ; while((RS232_Status & (char)(0x01)) != (char)(0x01))    // wait for Rx bit in 6850 serial comms chip status register to be '1'
+                      73   _getch_1:
+00000040  1039 0040   74          move.b    4194368,D0
+00000044  0040      
+00000046  C03C 0001   75          and.b     #1,D0
+0000004A  0C00 0001   76          cmp.b     #1,D0
+0000004E  6702        77          beq.s     _getch_3
+00000050  60EE        78          bra       _getch_1
+                      79   _getch_3:
+                      80   ; ;
+                      81   ; return (RS232_RxData & (char)(0x7f));                   // read received character, mask off top bit and return as 7 bit ASCII character
+00000052  1039 0040   82          move.b    4194370,D0
+00000056  0042      
+00000058  C0BC 0000   83          and.l     #255,D0
+0000005C  00FF      
+0000005E  C0BC 0000   84          and.l     #127,D0
+00000062  007F      
+00000064  4E75        85          rts
+                      86   ; }
+                      87   ; int a[100][100], b[100][100], c[100][100];
+                      88   ; int i, j, k, sum;
+                      89   ; int main(void)
+                      90   ; {
+                      91   _main:
+00000066  48E7 003C   92          movem.l   A2/A3/A4/A5,-(A7)
+0000006A  45F9 0001   93          lea       _i.L,A2
+0000006E  EAD6      
+00000070  47F9 0001   94          lea       _k.L,A3
+00000074  EADE      
+00000076  49F9 0001   95          lea       _j.L,A4
+0000007A  EADA      
+0000007C  4BF9 0001   96          lea       _sum.L,A5
+00000080  EAE2      
+                      97   ; Init_RS232();
+00000082  4EB8 0000   98          jsr       _Init_RS232
+                      99   ; printf("\n\nStart.....");
+00000086  4879 0000  100          pea       @speedt~1_1.L
+0000008A  15F8      
+0000008C  4EB9 0000  101          jsr       _printf
+00000090  0BFE      
+00000092  584F       102          addq.w    #4,A7
+                     103   ; for(i=0; i <50; i ++)  {
+00000094  4292       104          clr.l     (A2)
+                     105   main_1:
+00000096  2012       106          move.l    (A2),D0
+00000098  0C80 0000  107          cmp.l     #50,D0
+0000009C  0032      
+0000009E  6C00 0AA8  108          bge       main_3
+                     109   ; printf("%d ", i);
+000000A2  2F12       110          move.l    (A2),-(A7)
+000000A4  4879 0000  111          pea       @speedt~1_2.L
+000000A8  1606      
+000000AA  4EB9 0000  112          jsr       _printf
+000000AE  0BFE      
+000000B0  504F       113          addq.w    #8,A7
+                     114   ; for(j=0; j < 50; j++)  {
+000000B2  4294       115          clr.l     (A4)
+                     116   main_4:
+000000B4  2014       117          move.l    (A4),D0
+000000B6  0C80 0000  118          cmp.l     #50,D0
+000000BA  0032      
+000000BC  6C00 0A84  119          bge       main_6
+                     120   ; sum = 0 ;
+000000C0  4295       121          clr.l     (A5)
+                     122   ; for(k=0; k <50; k++)   {
+000000C2  4293       123          clr.l     (A3)
+                     124   main_7:
+000000C4  2013       125          move.l    (A3),D0
+000000C6  0C80 0000  126          cmp.l     #50,D0
+000000CA  0032      
+000000CC  6C00 0A58  127          bge       main_9
+                     128   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+000000D0  2015       129          move.l    (A5),D0
+000000D2  2212       130          move.l    (A2),D1
+000000D4  C3FC 0190  131          muls      #400,D1
+000000D8  41F9 0000  132          lea       _b.L,A0
+000000DC  B256      
+000000DE  D1C1       133          add.l     D1,A0
+000000E0  2213       134          move.l    (A3),D1
+000000E2  E589       135          lsl.l     #2,D1
+000000E4  2F00       136          move.l    D0,-(A7)
+000000E6  2013       137          move.l    (A3),D0
+000000E8  C1FC 0190  138          muls      #400,D0
+000000EC  43F9 0000  139          lea       _b.L,A1
+000000F0  B256      
+000000F2  D3C0       140          add.l     D0,A1
+000000F4  201F       141          move.l    (A7)+,D0
+000000F6  2F00       142          move.l    D0,-(A7)
+000000F8  2014       143          move.l    (A4),D0
+000000FA  E588       144          lsl.l     #2,D0
+000000FC  2F30 1800  145          move.l    0(A0,D1.L),-(A7)
+00000100  2F31 0800  146          move.l    0(A1,D0.L),-(A7)
+00000104  4EB9 0000  147          jsr       LMUL
+00000108  0B70      
+0000010A  2217       148          move.l    (A7),D1
+0000010C  504F       149          addq.w    #8,A7
+0000010E  201F       150          move.l    (A7)+,D0
+00000110  D081       151          add.l     D1,D0
+00000112  2212       152          move.l    (A2),D1
+00000114  C3FC 0190  153          muls      #400,D1
+00000118  41F9 0000  154          lea       _a.L,A0
+0000011C  1616      
+0000011E  D1C1       155          add.l     D1,A0
+00000120  2213       156          move.l    (A3),D1
+00000122  E589       157          lsl.l     #2,D1
+00000124  2F00       158          move.l    D0,-(A7)
+00000126  2012       159          move.l    (A2),D0
+00000128  C1FC 0190  160          muls      #400,D0
+0000012C  43F9 0001  161          lea       _c.L,A1
+00000130  4E96      
+00000132  D3C0       162          add.l     D0,A1
+00000134  201F       163          move.l    (A7)+,D0
+00000136  2F00       164          move.l    D0,-(A7)
+00000138  2014       165          move.l    (A4),D0
+0000013A  E588       166          lsl.l     #2,D0
+0000013C  2F30 1800  167          move.l    0(A0,D1.L),-(A7)
+00000140  2F31 0800  168          move.l    0(A1,D0.L),-(A7)
+00000144  4EB9 0000  169          jsr       LMUL
+00000148  0B70      
+0000014A  2217       170          move.l    (A7),D1
+0000014C  504F       171          addq.w    #8,A7
+0000014E  201F       172          move.l    (A7)+,D0
+00000150  D081       173          add.l     D1,D0
+00000152  2A80       174          move.l    D0,(A5)
+                     175   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000154  2015       176          move.l    (A5),D0
+00000156  2212       177          move.l    (A2),D1
+00000158  C3FC 0190  178          muls      #400,D1
+0000015C  41F9 0000  179          lea       _b.L,A0
+00000160  B256      
+00000162  D1C1       180          add.l     D1,A0
+00000164  2213       181          move.l    (A3),D1
+00000166  E589       182          lsl.l     #2,D1
+00000168  2F00       183          move.l    D0,-(A7)
+0000016A  2013       184          move.l    (A3),D0
+0000016C  C1FC 0190  185          muls      #400,D0
+00000170  43F9 0000  186          lea       _b.L,A1
+00000174  B256      
+00000176  D3C0       187          add.l     D0,A1
+00000178  201F       188          move.l    (A7)+,D0
+0000017A  2F00       189          move.l    D0,-(A7)
+0000017C  2014       190          move.l    (A4),D0
+0000017E  E588       191          lsl.l     #2,D0
+00000180  2F30 1800  192          move.l    0(A0,D1.L),-(A7)
+00000184  2F31 0800  193          move.l    0(A1,D0.L),-(A7)
+00000188  4EB9 0000  194          jsr       LMUL
+0000018C  0B70      
+0000018E  2217       195          move.l    (A7),D1
+00000190  504F       196          addq.w    #8,A7
+00000192  201F       197          move.l    (A7)+,D0
+00000194  D081       198          add.l     D1,D0
+00000196  2212       199          move.l    (A2),D1
+00000198  C3FC 0190  200          muls      #400,D1
+0000019C  41F9 0000  201          lea       _a.L,A0
+000001A0  1616      
+000001A2  D1C1       202          add.l     D1,A0
+000001A4  2213       203          move.l    (A3),D1
+000001A6  E589       204          lsl.l     #2,D1
+000001A8  2F00       205          move.l    D0,-(A7)
+000001AA  2012       206          move.l    (A2),D0
+000001AC  C1FC 0190  207          muls      #400,D0
+000001B0  43F9 0001  208          lea       _c.L,A1
+000001B4  4E96      
+000001B6  D3C0       209          add.l     D0,A1
+000001B8  201F       210          move.l    (A7)+,D0
+000001BA  2F00       211          move.l    D0,-(A7)
+000001BC  2014       212          move.l    (A4),D0
+000001BE  E588       213          lsl.l     #2,D0
+000001C0  2F30 1800  214          move.l    0(A0,D1.L),-(A7)
+000001C4  2F31 0800  215          move.l    0(A1,D0.L),-(A7)
+000001C8  4EB9 0000  216          jsr       LMUL
+000001CC  0B70      
+000001CE  2217       217          move.l    (A7),D1
+000001D0  504F       218          addq.w    #8,A7
+000001D2  201F       219          move.l    (A7)+,D0
+000001D4  D081       220          add.l     D1,D0
+000001D6  2A80       221          move.l    D0,(A5)
+                     222   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+000001D8  2015       223          move.l    (A5),D0
+000001DA  2212       224          move.l    (A2),D1
+000001DC  C3FC 0190  225          muls      #400,D1
+000001E0  41F9 0000  226          lea       _b.L,A0
+000001E4  B256      
+000001E6  D1C1       227          add.l     D1,A0
+000001E8  2213       228          move.l    (A3),D1
+000001EA  E589       229          lsl.l     #2,D1
+000001EC  2F00       230          move.l    D0,-(A7)
+000001EE  2013       231          move.l    (A3),D0
+000001F0  C1FC 0190  232          muls      #400,D0
+000001F4  43F9 0000  233          lea       _b.L,A1
+000001F8  B256      
+000001FA  D3C0       234          add.l     D0,A1
+000001FC  201F       235          move.l    (A7)+,D0
+000001FE  2F00       236          move.l    D0,-(A7)
+00000200  2014       237          move.l    (A4),D0
+00000202  E588       238          lsl.l     #2,D0
+00000204  2F30 1800  239          move.l    0(A0,D1.L),-(A7)
+00000208  2F31 0800  240          move.l    0(A1,D0.L),-(A7)
+0000020C  4EB9 0000  241          jsr       LMUL
+00000210  0B70      
+00000212  2217       242          move.l    (A7),D1
+00000214  504F       243          addq.w    #8,A7
+00000216  201F       244          move.l    (A7)+,D0
+00000218  D081       245          add.l     D1,D0
+0000021A  2212       246          move.l    (A2),D1
+0000021C  C3FC 0190  247          muls      #400,D1
+00000220  41F9 0000  248          lea       _a.L,A0
+00000224  1616      
+00000226  D1C1       249          add.l     D1,A0
+00000228  2213       250          move.l    (A3),D1
+0000022A  E589       251          lsl.l     #2,D1
+0000022C  2F00       252          move.l    D0,-(A7)
+0000022E  2012       253          move.l    (A2),D0
+00000230  C1FC 0190  254          muls      #400,D0
+00000234  43F9 0001  255          lea       _c.L,A1
+00000238  4E96      
+0000023A  D3C0       256          add.l     D0,A1
+0000023C  201F       257          move.l    (A7)+,D0
+0000023E  2F00       258          move.l    D0,-(A7)
+00000240  2014       259          move.l    (A4),D0
+00000242  E588       260          lsl.l     #2,D0
+00000244  2F30 1800  261          move.l    0(A0,D1.L),-(A7)
+00000248  2F31 0800  262          move.l    0(A1,D0.L),-(A7)
+0000024C  4EB9 0000  263          jsr       LMUL
+00000250  0B70      
+00000252  2217       264          move.l    (A7),D1
+00000254  504F       265          addq.w    #8,A7
+00000256  201F       266          move.l    (A7)+,D0
+00000258  D081       267          add.l     D1,D0
+0000025A  2A80       268          move.l    D0,(A5)
+                     269   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+0000025C  2015       270          move.l    (A5),D0
+0000025E  2212       271          move.l    (A2),D1
+00000260  C3FC 0190  272          muls      #400,D1
+00000264  41F9 0000  273          lea       _b.L,A0
+00000268  B256      
+0000026A  D1C1       274          add.l     D1,A0
+0000026C  2213       275          move.l    (A3),D1
+0000026E  E589       276          lsl.l     #2,D1
+00000270  2F00       277          move.l    D0,-(A7)
+00000272  2013       278          move.l    (A3),D0
+00000274  C1FC 0190  279          muls      #400,D0
+00000278  43F9 0000  280          lea       _b.L,A1
+0000027C  B256      
+0000027E  D3C0       281          add.l     D0,A1
+00000280  201F       282          move.l    (A7)+,D0
+00000282  2F00       283          move.l    D0,-(A7)
+00000284  2014       284          move.l    (A4),D0
+00000286  E588       285          lsl.l     #2,D0
+00000288  2F30 1800  286          move.l    0(A0,D1.L),-(A7)
+0000028C  2F31 0800  287          move.l    0(A1,D0.L),-(A7)
+00000290  4EB9 0000  288          jsr       LMUL
+00000294  0B70      
+00000296  2217       289          move.l    (A7),D1
+00000298  504F       290          addq.w    #8,A7
+0000029A  201F       291          move.l    (A7)+,D0
+0000029C  D081       292          add.l     D1,D0
+0000029E  2212       293          move.l    (A2),D1
+000002A0  C3FC 0190  294          muls      #400,D1
+000002A4  41F9 0000  295          lea       _a.L,A0
+000002A8  1616      
+000002AA  D1C1       296          add.l     D1,A0
+000002AC  2213       297          move.l    (A3),D1
+000002AE  E589       298          lsl.l     #2,D1
+000002B0  2F00       299          move.l    D0,-(A7)
+000002B2  2012       300          move.l    (A2),D0
+000002B4  C1FC 0190  301          muls      #400,D0
+000002B8  43F9 0001  302          lea       _c.L,A1
+000002BC  4E96      
+000002BE  D3C0       303          add.l     D0,A1
+000002C0  201F       304          move.l    (A7)+,D0
+000002C2  2F00       305          move.l    D0,-(A7)
+000002C4  2014       306          move.l    (A4),D0
+000002C6  E588       307          lsl.l     #2,D0
+000002C8  2F30 1800  308          move.l    0(A0,D1.L),-(A7)
+000002CC  2F31 0800  309          move.l    0(A1,D0.L),-(A7)
+000002D0  4EB9 0000  310          jsr       LMUL
+000002D4  0B70      
+000002D6  2217       311          move.l    (A7),D1
+000002D8  504F       312          addq.w    #8,A7
+000002DA  201F       313          move.l    (A7)+,D0
+000002DC  D081       314          add.l     D1,D0
+000002DE  2A80       315          move.l    D0,(A5)
+                     316   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+000002E0  2015       317          move.l    (A5),D0
+000002E2  2212       318          move.l    (A2),D1
+000002E4  C3FC 0190  319          muls      #400,D1
+000002E8  41F9 0000  320          lea       _b.L,A0
+000002EC  B256      
+000002EE  D1C1       321          add.l     D1,A0
+000002F0  2213       322          move.l    (A3),D1
+000002F2  E589       323          lsl.l     #2,D1
+000002F4  2F00       324          move.l    D0,-(A7)
+000002F6  2013       325          move.l    (A3),D0
+000002F8  C1FC 0190  326          muls      #400,D0
+000002FC  43F9 0000  327          lea       _b.L,A1
+00000300  B256      
+00000302  D3C0       328          add.l     D0,A1
+00000304  201F       329          move.l    (A7)+,D0
+00000306  2F00       330          move.l    D0,-(A7)
+00000308  2014       331          move.l    (A4),D0
+0000030A  E588       332          lsl.l     #2,D0
+0000030C  2F30 1800  333          move.l    0(A0,D1.L),-(A7)
+00000310  2F31 0800  334          move.l    0(A1,D0.L),-(A7)
+00000314  4EB9 0000  335          jsr       LMUL
+00000318  0B70      
+0000031A  2217       336          move.l    (A7),D1
+0000031C  504F       337          addq.w    #8,A7
+0000031E  201F       338          move.l    (A7)+,D0
+00000320  D081       339          add.l     D1,D0
+00000322  2212       340          move.l    (A2),D1
+00000324  C3FC 0190  341          muls      #400,D1
+00000328  41F9 0000  342          lea       _a.L,A0
+0000032C  1616      
+0000032E  D1C1       343          add.l     D1,A0
+00000330  2213       344          move.l    (A3),D1
+00000332  E589       345          lsl.l     #2,D1
+00000334  2F00       346          move.l    D0,-(A7)
+00000336  2012       347          move.l    (A2),D0
+00000338  C1FC 0190  348          muls      #400,D0
+0000033C  43F9 0001  349          lea       _c.L,A1
+00000340  4E96      
+00000342  D3C0       350          add.l     D0,A1
+00000344  201F       351          move.l    (A7)+,D0
+00000346  2F00       352          move.l    D0,-(A7)
+00000348  2014       353          move.l    (A4),D0
+0000034A  E588       354          lsl.l     #2,D0
+0000034C  2F30 1800  355          move.l    0(A0,D1.L),-(A7)
+00000350  2F31 0800  356          move.l    0(A1,D0.L),-(A7)
+00000354  4EB9 0000  357          jsr       LMUL
+00000358  0B70      
+0000035A  2217       358          move.l    (A7),D1
+0000035C  504F       359          addq.w    #8,A7
+0000035E  201F       360          move.l    (A7)+,D0
+00000360  D081       361          add.l     D1,D0
+00000362  2A80       362          move.l    D0,(A5)
+                     363   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000364  2015       364          move.l    (A5),D0
+00000366  2212       365          move.l    (A2),D1
+00000368  C3FC 0190  366          muls      #400,D1
+0000036C  41F9 0000  367          lea       _b.L,A0
+00000370  B256      
+00000372  D1C1       368          add.l     D1,A0
+00000374  2213       369          move.l    (A3),D1
+00000376  E589       370          lsl.l     #2,D1
+00000378  2F00       371          move.l    D0,-(A7)
+0000037A  2013       372          move.l    (A3),D0
+0000037C  C1FC 0190  373          muls      #400,D0
+00000380  43F9 0000  374          lea       _b.L,A1
+00000384  B256      
+00000386  D3C0       375          add.l     D0,A1
+00000388  201F       376          move.l    (A7)+,D0
+0000038A  2F00       377          move.l    D0,-(A7)
+0000038C  2014       378          move.l    (A4),D0
+0000038E  E588       379          lsl.l     #2,D0
+00000390  2F30 1800  380          move.l    0(A0,D1.L),-(A7)
+00000394  2F31 0800  381          move.l    0(A1,D0.L),-(A7)
+00000398  4EB9 0000  382          jsr       LMUL
+0000039C  0B70      
+0000039E  2217       383          move.l    (A7),D1
+000003A0  504F       384          addq.w    #8,A7
+000003A2  201F       385          move.l    (A7)+,D0
+000003A4  D081       386          add.l     D1,D0
+000003A6  2212       387          move.l    (A2),D1
+000003A8  C3FC 0190  388          muls      #400,D1
+000003AC  41F9 0000  389          lea       _a.L,A0
+000003B0  1616      
+000003B2  D1C1       390          add.l     D1,A0
+000003B4  2213       391          move.l    (A3),D1
+000003B6  E589       392          lsl.l     #2,D1
+000003B8  2F00       393          move.l    D0,-(A7)
+000003BA  2012       394          move.l    (A2),D0
+000003BC  C1FC 0190  395          muls      #400,D0
+000003C0  43F9 0001  396          lea       _c.L,A1
+000003C4  4E96      
+000003C6  D3C0       397          add.l     D0,A1
+000003C8  201F       398          move.l    (A7)+,D0
+000003CA  2F00       399          move.l    D0,-(A7)
+000003CC  2014       400          move.l    (A4),D0
+000003CE  E588       401          lsl.l     #2,D0
+000003D0  2F30 1800  402          move.l    0(A0,D1.L),-(A7)
+000003D4  2F31 0800  403          move.l    0(A1,D0.L),-(A7)
+000003D8  4EB9 0000  404          jsr       LMUL
+000003DC  0B70      
+000003DE  2217       405          move.l    (A7),D1
+000003E0  504F       406          addq.w    #8,A7
+000003E2  201F       407          move.l    (A7)+,D0
+000003E4  D081       408          add.l     D1,D0
+000003E6  2A80       409          move.l    D0,(A5)
+                     410   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+000003E8  2015       411          move.l    (A5),D0
+000003EA  2212       412          move.l    (A2),D1
+000003EC  C3FC 0190  413          muls      #400,D1
+000003F0  41F9 0000  414          lea       _b.L,A0
+000003F4  B256      
+000003F6  D1C1       415          add.l     D1,A0
+000003F8  2213       416          move.l    (A3),D1
+000003FA  E589       417          lsl.l     #2,D1
+000003FC  2F00       418          move.l    D0,-(A7)
+000003FE  2013       419          move.l    (A3),D0
+00000400  C1FC 0190  420          muls      #400,D0
+00000404  43F9 0000  421          lea       _b.L,A1
+00000408  B256      
+0000040A  D3C0       422          add.l     D0,A1
+0000040C  201F       423          move.l    (A7)+,D0
+0000040E  2F00       424          move.l    D0,-(A7)
+00000410  2014       425          move.l    (A4),D0
+00000412  E588       426          lsl.l     #2,D0
+00000414  2F30 1800  427          move.l    0(A0,D1.L),-(A7)
+00000418  2F31 0800  428          move.l    0(A1,D0.L),-(A7)
+0000041C  4EB9 0000  429          jsr       LMUL
+00000420  0B70      
+00000422  2217       430          move.l    (A7),D1
+00000424  504F       431          addq.w    #8,A7
+00000426  201F       432          move.l    (A7)+,D0
+00000428  D081       433          add.l     D1,D0
+0000042A  2212       434          move.l    (A2),D1
+0000042C  C3FC 0190  435          muls      #400,D1
+00000430  41F9 0000  436          lea       _a.L,A0
+00000434  1616      
+00000436  D1C1       437          add.l     D1,A0
+00000438  2213       438          move.l    (A3),D1
+0000043A  E589       439          lsl.l     #2,D1
+0000043C  2F00       440          move.l    D0,-(A7)
+0000043E  2012       441          move.l    (A2),D0
+00000440  C1FC 0190  442          muls      #400,D0
+00000444  43F9 0001  443          lea       _c.L,A1
+00000448  4E96      
+0000044A  D3C0       444          add.l     D0,A1
+0000044C  201F       445          move.l    (A7)+,D0
+0000044E  2F00       446          move.l    D0,-(A7)
+00000450  2014       447          move.l    (A4),D0
+00000452  E588       448          lsl.l     #2,D0
+00000454  2F30 1800  449          move.l    0(A0,D1.L),-(A7)
+00000458  2F31 0800  450          move.l    0(A1,D0.L),-(A7)
+0000045C  4EB9 0000  451          jsr       LMUL
+00000460  0B70      
+00000462  2217       452          move.l    (A7),D1
+00000464  504F       453          addq.w    #8,A7
+00000466  201F       454          move.l    (A7)+,D0
+00000468  D081       455          add.l     D1,D0
+0000046A  2A80       456          move.l    D0,(A5)
+                     457   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+0000046C  2015       458          move.l    (A5),D0
+0000046E  2212       459          move.l    (A2),D1
+00000470  C3FC 0190  460          muls      #400,D1
+00000474  41F9 0000  461          lea       _b.L,A0
+00000478  B256      
+0000047A  D1C1       462          add.l     D1,A0
+0000047C  2213       463          move.l    (A3),D1
+0000047E  E589       464          lsl.l     #2,D1
+00000480  2F00       465          move.l    D0,-(A7)
+00000482  2013       466          move.l    (A3),D0
+00000484  C1FC 0190  467          muls      #400,D0
+00000488  43F9 0000  468          lea       _b.L,A1
+0000048C  B256      
+0000048E  D3C0       469          add.l     D0,A1
+00000490  201F       470          move.l    (A7)+,D0
+00000492  2F00       471          move.l    D0,-(A7)
+00000494  2014       472          move.l    (A4),D0
+00000496  E588       473          lsl.l     #2,D0
+00000498  2F30 1800  474          move.l    0(A0,D1.L),-(A7)
+0000049C  2F31 0800  475          move.l    0(A1,D0.L),-(A7)
+000004A0  4EB9 0000  476          jsr       LMUL
+000004A4  0B70      
+000004A6  2217       477          move.l    (A7),D1
+000004A8  504F       478          addq.w    #8,A7
+000004AA  201F       479          move.l    (A7)+,D0
+000004AC  D081       480          add.l     D1,D0
+000004AE  2212       481          move.l    (A2),D1
+000004B0  C3FC 0190  482          muls      #400,D1
+000004B4  41F9 0000  483          lea       _a.L,A0
+000004B8  1616      
+000004BA  D1C1       484          add.l     D1,A0
+000004BC  2213       485          move.l    (A3),D1
+000004BE  E589       486          lsl.l     #2,D1
+000004C0  2F00       487          move.l    D0,-(A7)
+000004C2  2012       488          move.l    (A2),D0
+000004C4  C1FC 0190  489          muls      #400,D0
+000004C8  43F9 0001  490          lea       _c.L,A1
+000004CC  4E96      
+000004CE  D3C0       491          add.l     D0,A1
+000004D0  201F       492          move.l    (A7)+,D0
+000004D2  2F00       493          move.l    D0,-(A7)
+000004D4  2014       494          move.l    (A4),D0
+000004D6  E588       495          lsl.l     #2,D0
+000004D8  2F30 1800  496          move.l    0(A0,D1.L),-(A7)
+000004DC  2F31 0800  497          move.l    0(A1,D0.L),-(A7)
+000004E0  4EB9 0000  498          jsr       LMUL
+000004E4  0B70      
+000004E6  2217       499          move.l    (A7),D1
+000004E8  504F       500          addq.w    #8,A7
+000004EA  201F       501          move.l    (A7)+,D0
+000004EC  D081       502          add.l     D1,D0
+000004EE  2A80       503          move.l    D0,(A5)
+                     504   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+000004F0  2015       505          move.l    (A5),D0
+000004F2  2212       506          move.l    (A2),D1
+000004F4  C3FC 0190  507          muls      #400,D1
+000004F8  41F9 0000  508          lea       _b.L,A0
+000004FC  B256      
+000004FE  D1C1       509          add.l     D1,A0
+00000500  2213       510          move.l    (A3),D1
+00000502  E589       511          lsl.l     #2,D1
+00000504  2F00       512          move.l    D0,-(A7)
+00000506  2013       513          move.l    (A3),D0
+00000508  C1FC 0190  514          muls      #400,D0
+0000050C  43F9 0000  515          lea       _b.L,A1
+00000510  B256      
+00000512  D3C0       516          add.l     D0,A1
+00000514  201F       517          move.l    (A7)+,D0
+00000516  2F00       518          move.l    D0,-(A7)
+00000518  2014       519          move.l    (A4),D0
+0000051A  E588       520          lsl.l     #2,D0
+0000051C  2F30 1800  521          move.l    0(A0,D1.L),-(A7)
+00000520  2F31 0800  522          move.l    0(A1,D0.L),-(A7)
+00000524  4EB9 0000  523          jsr       LMUL
+00000528  0B70      
+0000052A  2217       524          move.l    (A7),D1
+0000052C  504F       525          addq.w    #8,A7
+0000052E  201F       526          move.l    (A7)+,D0
+00000530  D081       527          add.l     D1,D0
+00000532  2212       528          move.l    (A2),D1
+00000534  C3FC 0190  529          muls      #400,D1
+00000538  41F9 0000  530          lea       _a.L,A0
+0000053C  1616      
+0000053E  D1C1       531          add.l     D1,A0
+00000540  2213       532          move.l    (A3),D1
+00000542  E589       533          lsl.l     #2,D1
+00000544  2F00       534          move.l    D0,-(A7)
+00000546  2012       535          move.l    (A2),D0
+00000548  C1FC 0190  536          muls      #400,D0
+0000054C  43F9 0001  537          lea       _c.L,A1
+00000550  4E96      
+00000552  D3C0       538          add.l     D0,A1
+00000554  201F       539          move.l    (A7)+,D0
+00000556  2F00       540          move.l    D0,-(A7)
+00000558  2014       541          move.l    (A4),D0
+0000055A  E588       542          lsl.l     #2,D0
+0000055C  2F30 1800  543          move.l    0(A0,D1.L),-(A7)
+00000560  2F31 0800  544          move.l    0(A1,D0.L),-(A7)
+00000564  4EB9 0000  545          jsr       LMUL
+00000568  0B70      
+0000056A  2217       546          move.l    (A7),D1
+0000056C  504F       547          addq.w    #8,A7
+0000056E  201F       548          move.l    (A7)+,D0
+00000570  D081       549          add.l     D1,D0
+00000572  2A80       550          move.l    D0,(A5)
+                     551   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000574  2015       552          move.l    (A5),D0
+00000576  2212       553          move.l    (A2),D1
+00000578  C3FC 0190  554          muls      #400,D1
+0000057C  41F9 0000  555          lea       _b.L,A0
+00000580  B256      
+00000582  D1C1       556          add.l     D1,A0
+00000584  2213       557          move.l    (A3),D1
+00000586  E589       558          lsl.l     #2,D1
+00000588  2F00       559          move.l    D0,-(A7)
+0000058A  2013       560          move.l    (A3),D0
+0000058C  C1FC 0190  561          muls      #400,D0
+00000590  43F9 0000  562          lea       _b.L,A1
+00000594  B256      
+00000596  D3C0       563          add.l     D0,A1
+00000598  201F       564          move.l    (A7)+,D0
+0000059A  2F00       565          move.l    D0,-(A7)
+0000059C  2014       566          move.l    (A4),D0
+0000059E  E588       567          lsl.l     #2,D0
+000005A0  2F30 1800  568          move.l    0(A0,D1.L),-(A7)
+000005A4  2F31 0800  569          move.l    0(A1,D0.L),-(A7)
+000005A8  4EB9 0000  570          jsr       LMUL
+000005AC  0B70      
+000005AE  2217       571          move.l    (A7),D1
+000005B0  504F       572          addq.w    #8,A7
+000005B2  201F       573          move.l    (A7)+,D0
+000005B4  D081       574          add.l     D1,D0
+000005B6  2212       575          move.l    (A2),D1
+000005B8  C3FC 0190  576          muls      #400,D1
+000005BC  41F9 0000  577          lea       _a.L,A0
+000005C0  1616      
+000005C2  D1C1       578          add.l     D1,A0
+000005C4  2213       579          move.l    (A3),D1
+000005C6  E589       580          lsl.l     #2,D1
+000005C8  2F00       581          move.l    D0,-(A7)
+000005CA  2012       582          move.l    (A2),D0
+000005CC  C1FC 0190  583          muls      #400,D0
+000005D0  43F9 0001  584          lea       _c.L,A1
+000005D4  4E96      
+000005D6  D3C0       585          add.l     D0,A1
+000005D8  201F       586          move.l    (A7)+,D0
+000005DA  2F00       587          move.l    D0,-(A7)
+000005DC  2014       588          move.l    (A4),D0
+000005DE  E588       589          lsl.l     #2,D0
+000005E0  2F30 1800  590          move.l    0(A0,D1.L),-(A7)
+000005E4  2F31 0800  591          move.l    0(A1,D0.L),-(A7)
+000005E8  4EB9 0000  592          jsr       LMUL
+000005EC  0B70      
+000005EE  2217       593          move.l    (A7),D1
+000005F0  504F       594          addq.w    #8,A7
+000005F2  201F       595          move.l    (A7)+,D0
+000005F4  D081       596          add.l     D1,D0
+000005F6  2A80       597          move.l    D0,(A5)
+                     598   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+000005F8  2015       599          move.l    (A5),D0
+000005FA  2212       600          move.l    (A2),D1
+000005FC  C3FC 0190  601          muls      #400,D1
+00000600  41F9 0000  602          lea       _b.L,A0
+00000604  B256      
+00000606  D1C1       603          add.l     D1,A0
+00000608  2213       604          move.l    (A3),D1
+0000060A  E589       605          lsl.l     #2,D1
+0000060C  2F00       606          move.l    D0,-(A7)
+0000060E  2013       607          move.l    (A3),D0
+00000610  C1FC 0190  608          muls      #400,D0
+00000614  43F9 0000  609          lea       _b.L,A1
+00000618  B256      
+0000061A  D3C0       610          add.l     D0,A1
+0000061C  201F       611          move.l    (A7)+,D0
+0000061E  2F00       612          move.l    D0,-(A7)
+00000620  2014       613          move.l    (A4),D0
+00000622  E588       614          lsl.l     #2,D0
+00000624  2F30 1800  615          move.l    0(A0,D1.L),-(A7)
+00000628  2F31 0800  616          move.l    0(A1,D0.L),-(A7)
+0000062C  4EB9 0000  617          jsr       LMUL
+00000630  0B70      
+00000632  2217       618          move.l    (A7),D1
+00000634  504F       619          addq.w    #8,A7
+00000636  201F       620          move.l    (A7)+,D0
+00000638  D081       621          add.l     D1,D0
+0000063A  2212       622          move.l    (A2),D1
+0000063C  C3FC 0190  623          muls      #400,D1
+00000640  41F9 0000  624          lea       _a.L,A0
+00000644  1616      
+00000646  D1C1       625          add.l     D1,A0
+00000648  2213       626          move.l    (A3),D1
+0000064A  E589       627          lsl.l     #2,D1
+0000064C  2F00       628          move.l    D0,-(A7)
+0000064E  2012       629          move.l    (A2),D0
+00000650  C1FC 0190  630          muls      #400,D0
+00000654  43F9 0001  631          lea       _c.L,A1
+00000658  4E96      
+0000065A  D3C0       632          add.l     D0,A1
+0000065C  201F       633          move.l    (A7)+,D0
+0000065E  2F00       634          move.l    D0,-(A7)
+00000660  2014       635          move.l    (A4),D0
+00000662  E588       636          lsl.l     #2,D0
+00000664  2F30 1800  637          move.l    0(A0,D1.L),-(A7)
+00000668  2F31 0800  638          move.l    0(A1,D0.L),-(A7)
+0000066C  4EB9 0000  639          jsr       LMUL
+00000670  0B70      
+00000672  2217       640          move.l    (A7),D1
+00000674  504F       641          addq.w    #8,A7
+00000676  201F       642          move.l    (A7)+,D0
+00000678  D081       643          add.l     D1,D0
+0000067A  2A80       644          move.l    D0,(A5)
+                     645   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+0000067C  2015       646          move.l    (A5),D0
+0000067E  2212       647          move.l    (A2),D1
+00000680  C3FC 0190  648          muls      #400,D1
+00000684  41F9 0000  649          lea       _b.L,A0
+00000688  B256      
+0000068A  D1C1       650          add.l     D1,A0
+0000068C  2213       651          move.l    (A3),D1
+0000068E  E589       652          lsl.l     #2,D1
+00000690  2F00       653          move.l    D0,-(A7)
+00000692  2013       654          move.l    (A3),D0
+00000694  C1FC 0190  655          muls      #400,D0
+00000698  43F9 0000  656          lea       _b.L,A1
+0000069C  B256      
+0000069E  D3C0       657          add.l     D0,A1
+000006A0  201F       658          move.l    (A7)+,D0
+000006A2  2F00       659          move.l    D0,-(A7)
+000006A4  2014       660          move.l    (A4),D0
+000006A6  E588       661          lsl.l     #2,D0
+000006A8  2F30 1800  662          move.l    0(A0,D1.L),-(A7)
+000006AC  2F31 0800  663          move.l    0(A1,D0.L),-(A7)
+000006B0  4EB9 0000  664          jsr       LMUL
+000006B4  0B70      
+000006B6  2217       665          move.l    (A7),D1
+000006B8  504F       666          addq.w    #8,A7
+000006BA  201F       667          move.l    (A7)+,D0
+000006BC  D081       668          add.l     D1,D0
+000006BE  2212       669          move.l    (A2),D1
+000006C0  C3FC 0190  670          muls      #400,D1
+000006C4  41F9 0000  671          lea       _a.L,A0
+000006C8  1616      
+000006CA  D1C1       672          add.l     D1,A0
+000006CC  2213       673          move.l    (A3),D1
+000006CE  E589       674          lsl.l     #2,D1
+000006D0  2F00       675          move.l    D0,-(A7)
+000006D2  2012       676          move.l    (A2),D0
+000006D4  C1FC 0190  677          muls      #400,D0
+000006D8  43F9 0001  678          lea       _c.L,A1
+000006DC  4E96      
+000006DE  D3C0       679          add.l     D0,A1
+000006E0  201F       680          move.l    (A7)+,D0
+000006E2  2F00       681          move.l    D0,-(A7)
+000006E4  2014       682          move.l    (A4),D0
+000006E6  E588       683          lsl.l     #2,D0
+000006E8  2F30 1800  684          move.l    0(A0,D1.L),-(A7)
+000006EC  2F31 0800  685          move.l    0(A1,D0.L),-(A7)
+000006F0  4EB9 0000  686          jsr       LMUL
+000006F4  0B70      
+000006F6  2217       687          move.l    (A7),D1
+000006F8  504F       688          addq.w    #8,A7
+000006FA  201F       689          move.l    (A7)+,D0
+000006FC  D081       690          add.l     D1,D0
+000006FE  2A80       691          move.l    D0,(A5)
+                     692   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000700  2015       693          move.l    (A5),D0
+00000702  2212       694          move.l    (A2),D1
+00000704  C3FC 0190  695          muls      #400,D1
+00000708  41F9 0000  696          lea       _b.L,A0
+0000070C  B256      
+0000070E  D1C1       697          add.l     D1,A0
+00000710  2213       698          move.l    (A3),D1
+00000712  E589       699          lsl.l     #2,D1
+00000714  2F00       700          move.l    D0,-(A7)
+00000716  2013       701          move.l    (A3),D0
+00000718  C1FC 0190  702          muls      #400,D0
+0000071C  43F9 0000  703          lea       _b.L,A1
+00000720  B256      
+00000722  D3C0       704          add.l     D0,A1
+00000724  201F       705          move.l    (A7)+,D0
+00000726  2F00       706          move.l    D0,-(A7)
+00000728  2014       707          move.l    (A4),D0
+0000072A  E588       708          lsl.l     #2,D0
+0000072C  2F30 1800  709          move.l    0(A0,D1.L),-(A7)
+00000730  2F31 0800  710          move.l    0(A1,D0.L),-(A7)
+00000734  4EB9 0000  711          jsr       LMUL
+00000738  0B70      
+0000073A  2217       712          move.l    (A7),D1
+0000073C  504F       713          addq.w    #8,A7
+0000073E  201F       714          move.l    (A7)+,D0
+00000740  D081       715          add.l     D1,D0
+00000742  2212       716          move.l    (A2),D1
+00000744  C3FC 0190  717          muls      #400,D1
+00000748  41F9 0000  718          lea       _a.L,A0
+0000074C  1616      
+0000074E  D1C1       719          add.l     D1,A0
+00000750  2213       720          move.l    (A3),D1
+00000752  E589       721          lsl.l     #2,D1
+00000754  2F00       722          move.l    D0,-(A7)
+00000756  2012       723          move.l    (A2),D0
+00000758  C1FC 0190  724          muls      #400,D0
+0000075C  43F9 0001  725          lea       _c.L,A1
+00000760  4E96      
+00000762  D3C0       726          add.l     D0,A1
+00000764  201F       727          move.l    (A7)+,D0
+00000766  2F00       728          move.l    D0,-(A7)
+00000768  2014       729          move.l    (A4),D0
+0000076A  E588       730          lsl.l     #2,D0
+0000076C  2F30 1800  731          move.l    0(A0,D1.L),-(A7)
+00000770  2F31 0800  732          move.l    0(A1,D0.L),-(A7)
+00000774  4EB9 0000  733          jsr       LMUL
+00000778  0B70      
+0000077A  2217       734          move.l    (A7),D1
+0000077C  504F       735          addq.w    #8,A7
+0000077E  201F       736          move.l    (A7)+,D0
+00000780  D081       737          add.l     D1,D0
+00000782  2A80       738          move.l    D0,(A5)
+                     739   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000784  2015       740          move.l    (A5),D0
+00000786  2212       741          move.l    (A2),D1
+00000788  C3FC 0190  742          muls      #400,D1
+0000078C  41F9 0000  743          lea       _b.L,A0
+00000790  B256      
+00000792  D1C1       744          add.l     D1,A0
+00000794  2213       745          move.l    (A3),D1
+00000796  E589       746          lsl.l     #2,D1
+00000798  2F00       747          move.l    D0,-(A7)
+0000079A  2013       748          move.l    (A3),D0
+0000079C  C1FC 0190  749          muls      #400,D0
+000007A0  43F9 0000  750          lea       _b.L,A1
+000007A4  B256      
+000007A6  D3C0       751          add.l     D0,A1
+000007A8  201F       752          move.l    (A7)+,D0
+000007AA  2F00       753          move.l    D0,-(A7)
+000007AC  2014       754          move.l    (A4),D0
+000007AE  E588       755          lsl.l     #2,D0
+000007B0  2F30 1800  756          move.l    0(A0,D1.L),-(A7)
+000007B4  2F31 0800  757          move.l    0(A1,D0.L),-(A7)
+000007B8  4EB9 0000  758          jsr       LMUL
+000007BC  0B70      
+000007BE  2217       759          move.l    (A7),D1
+000007C0  504F       760          addq.w    #8,A7
+000007C2  201F       761          move.l    (A7)+,D0
+000007C4  D081       762          add.l     D1,D0
+000007C6  2212       763          move.l    (A2),D1
+000007C8  C3FC 0190  764          muls      #400,D1
+000007CC  41F9 0000  765          lea       _a.L,A0
+000007D0  1616      
+000007D2  D1C1       766          add.l     D1,A0
+000007D4  2213       767          move.l    (A3),D1
+000007D6  E589       768          lsl.l     #2,D1
+000007D8  2F00       769          move.l    D0,-(A7)
+000007DA  2012       770          move.l    (A2),D0
+000007DC  C1FC 0190  771          muls      #400,D0
+000007E0  43F9 0001  772          lea       _c.L,A1
+000007E4  4E96      
+000007E6  D3C0       773          add.l     D0,A1
+000007E8  201F       774          move.l    (A7)+,D0
+000007EA  2F00       775          move.l    D0,-(A7)
+000007EC  2014       776          move.l    (A4),D0
+000007EE  E588       777          lsl.l     #2,D0
+000007F0  2F30 1800  778          move.l    0(A0,D1.L),-(A7)
+000007F4  2F31 0800  779          move.l    0(A1,D0.L),-(A7)
+000007F8  4EB9 0000  780          jsr       LMUL
+000007FC  0B70      
+000007FE  2217       781          move.l    (A7),D1
+00000800  504F       782          addq.w    #8,A7
+00000802  201F       783          move.l    (A7)+,D0
+00000804  D081       784          add.l     D1,D0
+00000806  2A80       785          move.l    D0,(A5)
+                     786   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000808  2015       787          move.l    (A5),D0
+0000080A  2212       788          move.l    (A2),D1
+0000080C  C3FC 0190  789          muls      #400,D1
+00000810  41F9 0000  790          lea       _b.L,A0
+00000814  B256      
+00000816  D1C1       791          add.l     D1,A0
+00000818  2213       792          move.l    (A3),D1
+0000081A  E589       793          lsl.l     #2,D1
+0000081C  2F00       794          move.l    D0,-(A7)
+0000081E  2013       795          move.l    (A3),D0
+00000820  C1FC 0190  796          muls      #400,D0
+00000824  43F9 0000  797          lea       _b.L,A1
+00000828  B256      
+0000082A  D3C0       798          add.l     D0,A1
+0000082C  201F       799          move.l    (A7)+,D0
+0000082E  2F00       800          move.l    D0,-(A7)
+00000830  2014       801          move.l    (A4),D0
+00000832  E588       802          lsl.l     #2,D0
+00000834  2F30 1800  803          move.l    0(A0,D1.L),-(A7)
+00000838  2F31 0800  804          move.l    0(A1,D0.L),-(A7)
+0000083C  4EB9 0000  805          jsr       LMUL
+00000840  0B70      
+00000842  2217       806          move.l    (A7),D1
+00000844  504F       807          addq.w    #8,A7
+00000846  201F       808          move.l    (A7)+,D0
+00000848  D081       809          add.l     D1,D0
+0000084A  2212       810          move.l    (A2),D1
+0000084C  C3FC 0190  811          muls      #400,D1
+00000850  41F9 0000  812          lea       _a.L,A0
+00000854  1616      
+00000856  D1C1       813          add.l     D1,A0
+00000858  2213       814          move.l    (A3),D1
+0000085A  E589       815          lsl.l     #2,D1
+0000085C  2F00       816          move.l    D0,-(A7)
+0000085E  2012       817          move.l    (A2),D0
+00000860  C1FC 0190  818          muls      #400,D0
+00000864  43F9 0001  819          lea       _c.L,A1
+00000868  4E96      
+0000086A  D3C0       820          add.l     D0,A1
+0000086C  201F       821          move.l    (A7)+,D0
+0000086E  2F00       822          move.l    D0,-(A7)
+00000870  2014       823          move.l    (A4),D0
+00000872  E588       824          lsl.l     #2,D0
+00000874  2F30 1800  825          move.l    0(A0,D1.L),-(A7)
+00000878  2F31 0800  826          move.l    0(A1,D0.L),-(A7)
+0000087C  4EB9 0000  827          jsr       LMUL
+00000880  0B70      
+00000882  2217       828          move.l    (A7),D1
+00000884  504F       829          addq.w    #8,A7
+00000886  201F       830          move.l    (A7)+,D0
+00000888  D081       831          add.l     D1,D0
+0000088A  2A80       832          move.l    D0,(A5)
+                     833   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+0000088C  2015       834          move.l    (A5),D0
+0000088E  2212       835          move.l    (A2),D1
+00000890  C3FC 0190  836          muls      #400,D1
+00000894  41F9 0000  837          lea       _b.L,A0
+00000898  B256      
+0000089A  D1C1       838          add.l     D1,A0
+0000089C  2213       839          move.l    (A3),D1
+0000089E  E589       840          lsl.l     #2,D1
+000008A0  2F00       841          move.l    D0,-(A7)
+000008A2  2013       842          move.l    (A3),D0
+000008A4  C1FC 0190  843          muls      #400,D0
+000008A8  43F9 0000  844          lea       _b.L,A1
+000008AC  B256      
+000008AE  D3C0       845          add.l     D0,A1
+000008B0  201F       846          move.l    (A7)+,D0
+000008B2  2F00       847          move.l    D0,-(A7)
+000008B4  2014       848          move.l    (A4),D0
+000008B6  E588       849          lsl.l     #2,D0
+000008B8  2F30 1800  850          move.l    0(A0,D1.L),-(A7)
+000008BC  2F31 0800  851          move.l    0(A1,D0.L),-(A7)
+000008C0  4EB9 0000  852          jsr       LMUL
+000008C4  0B70      
+000008C6  2217       853          move.l    (A7),D1
+000008C8  504F       854          addq.w    #8,A7
+000008CA  201F       855          move.l    (A7)+,D0
+000008CC  D081       856          add.l     D1,D0
+000008CE  2212       857          move.l    (A2),D1
+000008D0  C3FC 0190  858          muls      #400,D1
+000008D4  41F9 0000  859          lea       _a.L,A0
+000008D8  1616      
+000008DA  D1C1       860          add.l     D1,A0
+000008DC  2213       861          move.l    (A3),D1
+000008DE  E589       862          lsl.l     #2,D1
+000008E0  2F00       863          move.l    D0,-(A7)
+000008E2  2012       864          move.l    (A2),D0
+000008E4  C1FC 0190  865          muls      #400,D0
+000008E8  43F9 0001  866          lea       _c.L,A1
+000008EC  4E96      
+000008EE  D3C0       867          add.l     D0,A1
+000008F0  201F       868          move.l    (A7)+,D0
+000008F2  2F00       869          move.l    D0,-(A7)
+000008F4  2014       870          move.l    (A4),D0
+000008F6  E588       871          lsl.l     #2,D0
+000008F8  2F30 1800  872          move.l    0(A0,D1.L),-(A7)
+000008FC  2F31 0800  873          move.l    0(A1,D0.L),-(A7)
+00000900  4EB9 0000  874          jsr       LMUL
+00000904  0B70      
+00000906  2217       875          move.l    (A7),D1
+00000908  504F       876          addq.w    #8,A7
+0000090A  201F       877          move.l    (A7)+,D0
+0000090C  D081       878          add.l     D1,D0
+0000090E  2A80       879          move.l    D0,(A5)
+                     880   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000910  2015       881          move.l    (A5),D0
+00000912  2212       882          move.l    (A2),D1
+00000914  C3FC 0190  883          muls      #400,D1
+00000918  41F9 0000  884          lea       _b.L,A0
+0000091C  B256      
+0000091E  D1C1       885          add.l     D1,A0
+00000920  2213       886          move.l    (A3),D1
+00000922  E589       887          lsl.l     #2,D1
+00000924  2F00       888          move.l    D0,-(A7)
+00000926  2013       889          move.l    (A3),D0
+00000928  C1FC 0190  890          muls      #400,D0
+0000092C  43F9 0000  891          lea       _b.L,A1
+00000930  B256      
+00000932  D3C0       892          add.l     D0,A1
+00000934  201F       893          move.l    (A7)+,D0
+00000936  2F00       894          move.l    D0,-(A7)
+00000938  2014       895          move.l    (A4),D0
+0000093A  E588       896          lsl.l     #2,D0
+0000093C  2F30 1800  897          move.l    0(A0,D1.L),-(A7)
+00000940  2F31 0800  898          move.l    0(A1,D0.L),-(A7)
+00000944  4EB9 0000  899          jsr       LMUL
+00000948  0B70      
+0000094A  2217       900          move.l    (A7),D1
+0000094C  504F       901          addq.w    #8,A7
+0000094E  201F       902          move.l    (A7)+,D0
+00000950  D081       903          add.l     D1,D0
+00000952  2212       904          move.l    (A2),D1
+00000954  C3FC 0190  905          muls      #400,D1
+00000958  41F9 0000  906          lea       _a.L,A0
+0000095C  1616      
+0000095E  D1C1       907          add.l     D1,A0
+00000960  2213       908          move.l    (A3),D1
+00000962  E589       909          lsl.l     #2,D1
+00000964  2F00       910          move.l    D0,-(A7)
+00000966  2012       911          move.l    (A2),D0
+00000968  C1FC 0190  912          muls      #400,D0
+0000096C  43F9 0001  913          lea       _c.L,A1
+00000970  4E96      
+00000972  D3C0       914          add.l     D0,A1
+00000974  201F       915          move.l    (A7)+,D0
+00000976  2F00       916          move.l    D0,-(A7)
+00000978  2014       917          move.l    (A4),D0
+0000097A  E588       918          lsl.l     #2,D0
+0000097C  2F30 1800  919          move.l    0(A0,D1.L),-(A7)
+00000980  2F31 0800  920          move.l    0(A1,D0.L),-(A7)
+00000984  4EB9 0000  921          jsr       LMUL
+00000988  0B70      
+0000098A  2217       922          move.l    (A7),D1
+0000098C  504F       923          addq.w    #8,A7
+0000098E  201F       924          move.l    (A7)+,D0
+00000990  D081       925          add.l     D1,D0
+00000992  2A80       926          move.l    D0,(A5)
+                     927   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000994  2015       928          move.l    (A5),D0
+00000996  2212       929          move.l    (A2),D1
+00000998  C3FC 0190  930          muls      #400,D1
+0000099C  41F9 0000  931          lea       _b.L,A0
+000009A0  B256      
+000009A2  D1C1       932          add.l     D1,A0
+000009A4  2213       933          move.l    (A3),D1
+000009A6  E589       934          lsl.l     #2,D1
+000009A8  2F00       935          move.l    D0,-(A7)
+000009AA  2013       936          move.l    (A3),D0
+000009AC  C1FC 0190  937          muls      #400,D0
+000009B0  43F9 0000  938          lea       _b.L,A1
+000009B4  B256      
+000009B6  D3C0       939          add.l     D0,A1
+000009B8  201F       940          move.l    (A7)+,D0
+000009BA  2F00       941          move.l    D0,-(A7)
+000009BC  2014       942          move.l    (A4),D0
+000009BE  E588       943          lsl.l     #2,D0
+000009C0  2F30 1800  944          move.l    0(A0,D1.L),-(A7)
+000009C4  2F31 0800  945          move.l    0(A1,D0.L),-(A7)
+000009C8  4EB9 0000  946          jsr       LMUL
+000009CC  0B70      
+000009CE  2217       947          move.l    (A7),D1
+000009D0  504F       948          addq.w    #8,A7
+000009D2  201F       949          move.l    (A7)+,D0
+000009D4  D081       950          add.l     D1,D0
+000009D6  2212       951          move.l    (A2),D1
+000009D8  C3FC 0190  952          muls      #400,D1
+000009DC  41F9 0000  953          lea       _a.L,A0
+000009E0  1616      
+000009E2  D1C1       954          add.l     D1,A0
+000009E4  2213       955          move.l    (A3),D1
+000009E6  E589       956          lsl.l     #2,D1
+000009E8  2F00       957          move.l    D0,-(A7)
+000009EA  2012       958          move.l    (A2),D0
+000009EC  C1FC 0190  959          muls      #400,D0
+000009F0  43F9 0001  960          lea       _c.L,A1
+000009F4  4E96      
+000009F6  D3C0       961          add.l     D0,A1
+000009F8  201F       962          move.l    (A7)+,D0
+000009FA  2F00       963          move.l    D0,-(A7)
+000009FC  2014       964          move.l    (A4),D0
+000009FE  E588       965          lsl.l     #2,D0
+00000A00  2F30 1800  966          move.l    0(A0,D1.L),-(A7)
+00000A04  2F31 0800  967          move.l    0(A1,D0.L),-(A7)
+00000A08  4EB9 0000  968          jsr       LMUL
+00000A0C  0B70      
+00000A0E  2217       969          move.l    (A7),D1
+00000A10  504F       970          addq.w    #8,A7
+00000A12  201F       971          move.l    (A7)+,D0
+00000A14  D081       972          add.l     D1,D0
+00000A16  2A80       973          move.l    D0,(A5)
+                     974   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000A18  2015       975          move.l    (A5),D0
+00000A1A  2212       976          move.l    (A2),D1
+00000A1C  C3FC 0190  977          muls      #400,D1
+00000A20  41F9 0000  978          lea       _b.L,A0
+00000A24  B256      
+00000A26  D1C1       979          add.l     D1,A0
+00000A28  2213       980          move.l    (A3),D1
+00000A2A  E589       981          lsl.l     #2,D1
+00000A2C  2F00       982          move.l    D0,-(A7)
+00000A2E  2013       983          move.l    (A3),D0
+00000A30  C1FC 0190  984          muls      #400,D0
+00000A34  43F9 0000  985          lea       _b.L,A1
+00000A38  B256      
+00000A3A  D3C0       986          add.l     D0,A1
+00000A3C  201F       987          move.l    (A7)+,D0
+00000A3E  2F00       988          move.l    D0,-(A7)
+00000A40  2014       989          move.l    (A4),D0
+00000A42  E588       990          lsl.l     #2,D0
+00000A44  2F30 1800  991          move.l    0(A0,D1.L),-(A7)
+00000A48  2F31 0800  992          move.l    0(A1,D0.L),-(A7)
+00000A4C  4EB9 0000  993          jsr       LMUL
+00000A50  0B70      
+00000A52  2217       994          move.l    (A7),D1
+00000A54  504F       995          addq.w    #8,A7
+00000A56  201F       996          move.l    (A7)+,D0
+00000A58  D081       997          add.l     D1,D0
+00000A5A  2212       998          move.l    (A2),D1
+00000A5C  C3FC 0190  999          muls      #400,D1
+00000A60  41F9 0000 1000          lea       _a.L,A0
+00000A64  1616      
+00000A66  D1C1      1001          add.l     D1,A0
+00000A68  2213      1002          move.l    (A3),D1
+00000A6A  E589      1003          lsl.l     #2,D1
+00000A6C  2F00      1004          move.l    D0,-(A7)
+00000A6E  2012      1005          move.l    (A2),D0
+00000A70  C1FC 0190 1006          muls      #400,D0
+00000A74  43F9 0001 1007          lea       _c.L,A1
+00000A78  4E96      
+00000A7A  D3C0      1008          add.l     D0,A1
+00000A7C  201F      1009          move.l    (A7)+,D0
+00000A7E  2F00      1010          move.l    D0,-(A7)
+00000A80  2014      1011          move.l    (A4),D0
+00000A82  E588      1012          lsl.l     #2,D0
+00000A84  2F30 1800 1013          move.l    0(A0,D1.L),-(A7)
+00000A88  2F31 0800 1014          move.l    0(A1,D0.L),-(A7)
+00000A8C  4EB9 0000 1015          jsr       LMUL
+00000A90  0B70      
+00000A92  2217      1016          move.l    (A7),D1
+00000A94  504F      1017          addq.w    #8,A7
+00000A96  201F      1018          move.l    (A7)+,D0
+00000A98  D081      1019          add.l     D1,D0
+00000A9A  2A80      1020          move.l    D0,(A5)
+                    1021   ; sum = sum + b[i][k] * b[k][j] + a[i][k] * c[i][j];
+00000A9C  2015      1022          move.l    (A5),D0
+00000A9E  2212      1023          move.l    (A2),D1
+00000AA0  C3FC 0190 1024          muls      #400,D1
+00000AA4  41F9 0000 1025          lea       _b.L,A0
+00000AA8  B256      
+00000AAA  D1C1      1026          add.l     D1,A0
+00000AAC  2213      1027          move.l    (A3),D1
+00000AAE  E589      1028          lsl.l     #2,D1
+00000AB0  2F00      1029          move.l    D0,-(A7)
+00000AB2  2013      1030          move.l    (A3),D0
+00000AB4  C1FC 0190 1031          muls      #400,D0
+00000AB8  43F9 0000 1032          lea       _b.L,A1
+00000ABC  B256      
+00000ABE  D3C0      1033          add.l     D0,A1
+00000AC0  201F      1034          move.l    (A7)+,D0
+00000AC2  2F00      1035          move.l    D0,-(A7)
+00000AC4  2014      1036          move.l    (A4),D0
+00000AC6  E588      1037          lsl.l     #2,D0
+00000AC8  2F30 1800 1038          move.l    0(A0,D1.L),-(A7)
+00000ACC  2F31 0800 1039          move.l    0(A1,D0.L),-(A7)
+00000AD0  4EB9 0000 1040          jsr       LMUL
+00000AD4  0B70      
+00000AD6  2217      1041          move.l    (A7),D1
+00000AD8  504F      1042          addq.w    #8,A7
+00000ADA  201F      1043          move.l    (A7)+,D0
+00000ADC  D081      1044          add.l     D1,D0
+00000ADE  2212      1045          move.l    (A2),D1
+00000AE0  C3FC 0190 1046          muls      #400,D1
+00000AE4  41F9 0000 1047          lea       _a.L,A0
+00000AE8  1616      
+00000AEA  D1C1      1048          add.l     D1,A0
+00000AEC  2213      1049          move.l    (A3),D1
+00000AEE  E589      1050          lsl.l     #2,D1
+00000AF0  2F00      1051          move.l    D0,-(A7)
+00000AF2  2012      1052          move.l    (A2),D0
+00000AF4  C1FC 0190 1053          muls      #400,D0
+00000AF8  43F9 0001 1054          lea       _c.L,A1
+00000AFC  4E96      
+00000AFE  D3C0      1055          add.l     D0,A1
+00000B00  201F      1056          move.l    (A7)+,D0
+00000B02  2F00      1057          move.l    D0,-(A7)
+00000B04  2014      1058          move.l    (A4),D0
+00000B06  E588      1059          lsl.l     #2,D0
+00000B08  2F30 1800 1060          move.l    0(A0,D1.L),-(A7)
+00000B0C  2F31 0800 1061          move.l    0(A1,D0.L),-(A7)
+00000B10  4EB9 0000 1062          jsr       LMUL
+00000B14  0B70      
+00000B16  2217      1063          move.l    (A7),D1
+00000B18  504F      1064          addq.w    #8,A7
+00000B1A  201F      1065          move.l    (A7)+,D0
+00000B1C  D081      1066          add.l     D1,D0
+00000B1E  2A80      1067          move.l    D0,(A5)
+00000B20  5293      1068          addq.l    #1,(A3)
+00000B22  6000 F5A0 1069          bra       main_7
+                    1070   main_9:
+                    1071   ; }
+                    1072   ; c[i][j] = sum ;
+00000B26  2012      1073          move.l    (A2),D0
+00000B28  C1FC 0190 1074          muls      #400,D0
+00000B2C  41F9 0001 1075          lea       _c.L,A0
+00000B30  4E96      
+00000B32  D1C0      1076          add.l     D0,A0
+00000B34  2014      1077          move.l    (A4),D0
+00000B36  E588      1078          lsl.l     #2,D0
+00000B38  2195 0800 1079          move.l    (A5),0(A0,D0.L)
+00000B3C  5294      1080          addq.l    #1,(A4)
+00000B3E  6000 F574 1081          bra       main_4
+                    1082   main_6:
+00000B42  5292      1083          addq.l    #1,(A2)
+00000B44  6000 F550 1084          bra       main_1
+                    1085   main_3:
+                    1086   ; }
+                    1087   ; }
+                    1088   ; printf("\n\nDone.....");
+00000B48  4879 0000 1089          pea       @speedt~1_3.L
+00000B4C  160A      
+00000B4E  4EB9 0000 1090          jsr       _printf
+00000B52  0BFE      
+00000B54  584F      1091          addq.w    #4,A7
+                    1092   ; return 0 ;
+00000B56  4280      1093          clr.l     D0
+00000B58  4CDF 3C00 1094          movem.l   (A7)+,A2/A3/A4/A5
+00000B5C  4E75      1095          rts
+                    1096   ; }
+                    1097   ULMUL:
+00000B5E  4E56 0000 1098          link    A6,#0
+00000B62  48E7 C000 1099          movem.l D0/D1,-(A7)
+00000B66  222E 0008 1100          move.l  8(A6),D1
+00000B6A  202E 000C 1101          move.l  12(A6),D0
+00000B6E  602C      1102          bra.s   lmul_3
+                    1103   LMUL:
+00000B70  4E56 0000 1104          link    A6,#0
+00000B74  48E7 C000 1105          movem.l D0/D1,-(A7)
+00000B78  222E 0008 1106          move.l  8(A6),D1
+00000B7C  202E 000C 1107          move.l  12(A6),D0
+00000B80  4A80      1108          tst.l   D0
+00000B82  6A0A      1109          bpl.s   lmul_1
+00000B84  4480      1110          neg.l   D0
+00000B86  4A81      1111          tst.l   D1
+00000B88  6A0A      1112          bpl.s   lmul_2
+00000B8A  4481      1113          neg.l   D1
+00000B8C  600E      1114          bra.s   lmul_3
+                    1115   lmul_1:
+00000B8E  4A81      1116          tst.l   D1
+00000B90  6A0A      1117          bpl.s   lmul_3
+00000B92  4481      1118          neg.l   D1
+                    1119   lmul_2:
+00000B94  6114      1120          bsr.s   domul
+00000B96  4481      1121          neg.l   D1
+00000B98  4080      1122          negx.l  D0
+00000B9A  6002      1123          bra.s   lmul_4
+                    1124   lmul_3:
+00000B9C  610C      1125          bsr.s   domul
+                    1126   lmul_4:
+00000B9E  2D41 0008 1127          move.l  D1,8(A6)
+00000BA2  4CDF 0003 1128          movem.l (A7)+,D0/D1
+00000BA6  4E5E      1129          unlk    A6
+00000BA8  4E75      1130          rts
+                    1131   domul:
+00000BAA  0C81 0000 1132          cmpi.l  #$FFFF,D1
+00000BAE  FFFF      
+00000BB0  620C      1133          bhi.s   domul_1
+00000BB2  0C80 0000 1134          cmpi.l  #$FFFF,D0
+00000BB6  FFFF      
+00000BB8  620E      1135          bhi.s   domul_2
+00000BBA  C2C0      1136          mulu    D0,D1
+00000BBC  4E75      1137          rts
+                    1138   domul_1:
+00000BBE  0C80 0000 1139          cmpi.l  #$FFFF,D0
+00000BC2  FFFF      
+00000BC4  6218      1140          bhi.s   domul_4
+00000BC6  6002      1141          bra.s   domul_3
+                    1142   domul_2
+00000BC8  C141      1143          exg     D0,D1
+                    1144   domul_3:
+00000BCA  2F02      1145          move.l  D2,-(A7)
+00000BCC  2401      1146          move.l  D1,D2
+00000BCE  4842      1147          swap    D2
+00000BD0  C2C0      1148          mulu    D0,D1
+00000BD2  C4C0      1149          mulu    D0,D2
+00000BD4  4842      1150          swap    D2
+00000BD6  4242      1151          clr.w   D2
+00000BD8  D282      1152          add.l   D2,D1
+00000BDA  241F      1153          move.l  (A7)+,D2
+00000BDC  4E75      1154          rts
+                    1155   domul_4:
+00000BDE  48E7 3000 1156          movem.l D2/D3,-(A7)
+00000BE2  2401      1157          move.l  D1,D2
+00000BE4  2601      1158          move.l  D1,D3
+00000BE6  C2C0      1159          mulu    D0,D1
+00000BE8  4842      1160          swap    D2
+00000BEA  C4C0      1161          mulu    D0,D2
+00000BEC  4840      1162          swap    D0
+00000BEE  C6C0      1163          mulu    D0,D3
+00000BF0  D483      1164          add.l   D3,D2
+00000BF2  4842      1165          swap    D2
+00000BF4  4242      1166          clr.w   D2
+00000BF6  D282      1167          add.l   D2,D1
+00000BF8  4CDF 000C 1168          movem.l (A7)+,D2/D3
+00000BFC  4E75      1169          rts
+                    1170   _printf:
+00000BFE  4E56 FFFC 1171          link      A6,#-4
+00000C02  48E7 2000 1172          movem.l   D2,-(A7)
+00000C06  41EE 0008 1173          lea       8(A6),A0
+00000C0A  5848      1174          addq.w    #4,A0
+00000C0C  2408      1175          move.l    A0,D2
+00000C0E  2F02      1176          move.l    D2,-(A7)
+00000C10  2F2E 0008 1177          move.l    8(A6),-(A7)
+00000C14  42A7      1178          clr.l     -(A7)
+00000C16  6100 00CA 1179          bsr       _vsprintf
+00000C1A  DEFC 000C 1180          add.w     #12,A7
+00000C1E  2D40 FFFC 1181          move.l    D0,-4(A6)
+00000C22  4282      1182          clr.l     D2
+00000C24  202E FFFC 1183          move.l    -4(A6),D0
+00000C28  4CDF 0004 1184          movem.l   (A7)+,D2
+00000C2C  4E5E      1185          unlk      A6
+00000C2E  4E75      1186          rts
+                    1187   @vsprintf_copy:
+00000C30  4E56 0000 1188          link      A6,#0
+00000C34  206E 0008 1189          move.l    8(A6),A0
+00000C38  4A90      1190          tst.l     (A0)
+00000C3A  6710      1191          beq.s     @vsprintf_copy_1
+00000C3C  202E 000C 1192          move.l    12(A6),D0
+00000C40  206E 0008 1193          move.l    8(A6),A0
+00000C44  2250      1194          move.l    (A0),A1
+00000C46  5290      1195          addq.l    #1,(A0)
+00000C48  1280      1196          move.b    D0,(A1)
+00000C4A  600A      1197          bra.s     @vsprintf_copy_2
+                    1198   @vsprintf_copy_1:
+00000C4C  2F2E 000C 1199          move.l    12(A6),-(A7)
+00000C50  6100 085C 1200          bsr       _putch
+00000C54  584F      1201          addq.w    #4,A7
+                    1202   @vsprintf_copy_2:
+00000C56  4E5E      1203          unlk      A6
+00000C58  4E75      1204          rts
+                    1205   @vsprintf_getval:
+00000C5A  4E56 0000 1206          link      A6,#0
+00000C5E  48E7 3000 1207          movem.l   D2/D3,-(A7)
+00000C62  242E 0008 1208          move.l    8(A6),D2
+00000C66  4283      1209          clr.l     D3
+00000C68  2042      1210          move.l    D2,A0
+00000C6A  2050      1211          move.l    (A0),A0
+00000C6C  1010      1212          move.b    (A0),D0
+00000C6E  4880      1213          ext.w     D0
+00000C70  48C0      1214          ext.l     D0
+00000C72  0C80 0000 1215          cmp.l     #42,D0
+00000C76  002A      
+00000C78  6612      1216          bne.s     @vsprintf_getval_1
+00000C7A  206E 000C 1217          move.l    12(A6),A0
+00000C7E  2250      1218          move.l    (A0),A1
+00000C80  5890      1219          addq.l    #4,(A0)
+00000C82  2611      1220          move.l    (A1),D3
+00000C84  2042      1221          move.l    D2,A0
+00000C86  5290      1222          addq.l    #1,(A0)
+00000C88  6000 004E 1223          bra       @vsprintf_getval_5
+                    1224   @vsprintf_getval_1:
+00000C8C  2042      1225          move.l    D2,A0
+00000C8E  2050      1226          move.l    (A0),A0
+00000C90  1010      1227          move.b    (A0),D0
+00000C92  4880      1228          ext.w     D0
+00000C94  48C0      1229          ext.l     D0
+00000C96  0C80 0000 1230          cmp.l     #48,D0
+00000C9A  0030      
+00000C9C  6D00 003A 1231          blt       @vsprintf_getval_5
+00000CA0  2042      1232          move.l    D2,A0
+00000CA2  2050      1233          move.l    (A0),A0
+00000CA4  1010      1234          move.b    (A0),D0
+00000CA6  4880      1235          ext.w     D0
+00000CA8  48C0      1236          ext.l     D0
+00000CAA  0C80 0000 1237          cmp.l     #57,D0
+00000CAE  0039      
+00000CB0  6E26      1238          bgt.s     @vsprintf_getval_5
+00000CB2  2F03      1239          move.l    D3,-(A7)
+00000CB4  4878 000A 1240          pea       10
+00000CB8  6100 FEB6 1241          bsr       LMUL
+00000CBC  2017      1242          move.l    (A7),D0
+00000CBE  504F      1243          addq.w    #8,A7
+00000CC0  2042      1244          move.l    D2,A0
+00000CC2  2250      1245          move.l    (A0),A1
+00000CC4  5290      1246          addq.l    #1,(A0)
+00000CC6  1211      1247          move.b    (A1),D1
+00000CC8  4881      1248          ext.w     D1
+00000CCA  48C1      1249          ext.l     D1
+00000CCC  D081      1250          add.l     D1,D0
+00000CCE  0480 0000 1251          sub.l     #48,D0
+00000CD2  0030      
+00000CD4  2600      1252          move.l    D0,D3
+00000CD6  60B4      1253          bra       @vsprintf_getval_1
+                    1254   @vsprintf_getval_5:
+00000CD8  2003      1255          move.l    D3,D0
+00000CDA  4CDF 000C 1256          movem.l   (A7)+,D2/D3
+00000CDE  4E5E      1257          unlk      A6
+00000CE0  4E75      1258          rts
+                    1259   _vsprintf:
+00000CE2  4E56 FFCC 1260          link      A6,#-52
+00000CE6  48E7 3F3C 1261          movem.l   D2/D3/D4/D5/D6/D7/A2/A3/A4/A5,-(A7)
+00000CEA  45EE 0008 1262          lea       8(A6),A2
+00000CEE  47F8 0C30 1263          lea       @vsprintf_copy,A3
+00000CF2  49F9 0000 1264          lea       _ultoa,A4
+00000CF6  143A      
+00000CF8  4286      1265          clr.l     D6
+                    1266   vsprintf_1:
+00000CFA  206E 000C 1267          move.l    12(A6),A0
+00000CFE  4A10      1268          tst.b     (A0)
+00000D00  6700 0624 1269          beq       vsprintf_3
+00000D04  206E 000C 1270          move.l    12(A6),A0
+00000D08  1010      1271          move.b    (A0),D0
+00000D0A  4880      1272          ext.w     D0
+00000D0C  48C0      1273          ext.l     D0
+00000D0E  0C80 0000 1274          cmp.l     #37,D0
+00000D12  0025      
+00000D14  671C      1275          beq.s     vsprintf_4
+00000D16  206E 000C 1276          move.l    12(A6),A0
+00000D1A  52AE 000C 1277          addq.l    #1,12(A6)
+00000D1E  1210      1278          move.b    (A0),D1
+00000D20  4881      1279          ext.w     D1
+00000D22  48C1      1280          ext.l     D1
+00000D24  2F01      1281          move.l    D1,-(A7)
+00000D26  2F0A      1282          move.l    A2,-(A7)
+00000D28  4E93      1283          jsr       (A3)
+00000D2A  504F      1284          addq.w    #8,A7
+00000D2C  5286      1285          addq.l    #1,D6
+00000D2E  6000 05F2 1286          bra       vsprintf_2
+                    1287   vsprintf_4:
+00000D32  52AE 000C 1288          addq.l    #1,12(A6)
+00000D36  422E FFD3 1289          clr.b     -45(A6)
+00000D3A  422E FFD2 1290          clr.b     -46(A6)
+00000D3E  422E FFD0 1291          clr.b     -48(A6)
+00000D42  422E FFCF 1292          clr.b     -49(A6)
+00000D46  422E FFCE 1293          clr.b     -50(A6)
+00000D4A  422E FFCD 1294          clr.b     -51(A6)
+00000D4E  42AE FFFC 1295          clr.l     -4(A6)
+00000D52  7AFF      1296          moveq     #-1,D5
+00000D54  41EE FFDC 1297          lea       -36(A6),A0
+00000D58  2608      1298          move.l    A0,D3
+00000D5A  2408      1299          move.l    A0,D2
+                    1300   vsprintf_6:
+00000D5C  206E 000C 1301          move.l    12(A6),A0
+00000D60  1010      1302          move.b    (A0),D0
+00000D62  4880      1303          ext.w     D0
+00000D64  48C0      1304          ext.l     D0
+00000D66  0C80 0000 1305          cmp.l     #43,D0
+00000D6A  002B      
+00000D6C  6730      1306          beq.s     vsprintf_12
+00000D6E  6E18      1307          bgt.s     vsprintf_15
+00000D70  0C80 0000 1308          cmp.l     #35,D0
+00000D74  0023      
+00000D76  6700 003E 1309          beq       vsprintf_14
+00000D7A  6E00 0046 1310          bgt       vsprintf_9
+00000D7E  0C80 0000 1311          cmp.l     #32,D0
+00000D82  0020      
+00000D84  6724      1312          beq.s     vsprintf_13
+00000D86  603A      1313          bra.s     vsprintf_9
+                    1314   vsprintf_15:
+00000D88  0C80 0000 1315          cmp.l     #45,D0
+00000D8C  002D      
+00000D8E  6702      1316          beq.s     vsprintf_11
+00000D90  6030      1317          bra.s     vsprintf_9
+                    1318   vsprintf_11:
+00000D92  1D7C 0001 1319          move.b    #1,-51(A6)
+00000D96  FFCD      
+00000D98  52AE 000C 1320          addq.l    #1,12(A6)
+00000D9C  6026      1321          bra.s     vsprintf_7
+                    1322   vsprintf_12:
+00000D9E  1D7C 0001 1323          move.b    #1,-50(A6)
+00000DA2  FFCE      
+00000DA4  52AE 000C 1324          addq.l    #1,12(A6)
+00000DA8  601A      1325          bra.s     vsprintf_7
+                    1326   vsprintf_13:
+00000DAA  1D7C 0001 1327          move.b    #1,-49(A6)
+00000DAE  FFCF      
+00000DB0  52AE 000C 1328          addq.l    #1,12(A6)
+00000DB4  600E      1329          bra.s     vsprintf_7
+                    1330   vsprintf_14:
+00000DB6  1D7C 0001 1331          move.b    #1,-48(A6)
+00000DBA  FFD0      
+00000DBC  52AE 000C 1332          addq.l    #1,12(A6)
+00000DC0  6002      1333          bra.s     vsprintf_7
+                    1334   vsprintf_9:
+00000DC2  6002      1335          bra.s     vsprintf_8
+                    1336   vsprintf_7:
+00000DC4  6096      1337          bra       vsprintf_6
+                    1338   vsprintf_8:
+00000DC6  206E 000C 1339          move.l    12(A6),A0
+00000DCA  1010      1340          move.b    (A0),D0
+00000DCC  4880      1341          ext.w     D0
+00000DCE  48C0      1342          ext.l     D0
+00000DD0  0C80 0000 1343          cmp.l     #48,D0
+00000DD4  0030      
+00000DD6  660A      1344          bne.s     vsprintf_16
+00000DD8  52AE 000C 1345          addq.l    #1,12(A6)
+00000DDC  1D7C 0001 1346          move.b    #1,-46(A6)
+00000DE0  FFD2      
+                    1347   vsprintf_16:
+00000DE2  486E 0010 1348          pea       16(A6)
+00000DE6  486E 000C 1349          pea       12(A6)
+00000DEA  6100 FE6E 1350          bsr       @vsprintf_getval
+00000DEE  504F      1351          addq.w    #8,A7
+00000DF0  2A40      1352          move.l    D0,A5
+00000DF2  206E 000C 1353          move.l    12(A6),A0
+00000DF6  1010      1354          move.b    (A0),D0
+00000DF8  4880      1355          ext.w     D0
+00000DFA  48C0      1356          ext.l     D0
+00000DFC  0C80 0000 1357          cmp.l     #46,D0
+00000E00  002E      
+00000E02  6614      1358          bne.s     vsprintf_18
+00000E04  52AE 000C 1359          addq.l    #1,12(A6)
+00000E08  486E 0010 1360          pea       16(A6)
+00000E0C  486E 000C 1361          pea       12(A6)
+00000E10  6100 FE48 1362          bsr       @vsprintf_getval
+00000E14  504F      1363          addq.w    #8,A7
+00000E16  2A00      1364          move.l    D0,D5
+                    1365   vsprintf_18:
+00000E18  206E 000C 1366          move.l    12(A6),A0
+00000E1C  1010      1367          move.b    (A0),D0
+00000E1E  4880      1368          ext.w     D0
+00000E20  48C0      1369          ext.l     D0
+00000E22  0C80 0000 1370          cmp.l     #108,D0
+00000E26  006C      
+00000E28  660A      1371          bne.s     vsprintf_20
+00000E2A  52AE 000C 1372          addq.l    #1,12(A6)
+00000E2E  1D7C 0001 1373          move.b    #1,-45(A6)
+00000E32  FFD3      
+                    1374   vsprintf_20:
+00000E34  206E 000C 1375          move.l    12(A6),A0
+00000E38  1010      1376          move.b    (A0),D0
+00000E3A  4880      1377          ext.w     D0
+00000E3C  48C0      1378          ext.l     D0
+00000E3E  0C80 0000 1379          cmp.l     #111,D0
+00000E42  006F      
+00000E44  6700 00D4 1380          beq       vsprintf_27
+00000E48  6E34      1381          bgt.s     vsprintf_33
+00000E4A  0C80 0000 1382          cmp.l     #100,D0
+00000E4E  0064      
+00000E50  6700 0054 1383          beq       vsprintf_24
+00000E54  6E1C      1384          bgt.s     vsprintf_34
+00000E56  0C80 0000 1385          cmp.l     #99,D0
+00000E5A  0063      
+00000E5C  6700 012C 1386          beq       vsprintf_30
+00000E60  6E00 016A 1387          bgt       vsprintf_22
+00000E64  0C80 0000 1388          cmp.l     #88,D0
+00000E68  0058      
+00000E6A  6700 00E6 1389          beq       vsprintf_28
+00000E6E  6000 015C 1390          bra       vsprintf_22
+                    1391   vsprintf_34:
+00000E72  0C80 0000 1392          cmp.l     #105,D0
+00000E76  0069      
+00000E78  672C      1393          beq.s     vsprintf_24
+00000E7A  6000 0150 1394          bra       vsprintf_22
+                    1395   vsprintf_33:
+00000E7E  0C80 0000 1396          cmp.l     #117,D0
+00000E82  0075      
+00000E84  6700 005C 1397          beq       vsprintf_26
+00000E88  6E0E      1398          bgt.s     vsprintf_35
+00000E8A  0C80 0000 1399          cmp.l     #115,D0
+00000E8E  0073      
+00000E90  6700 011C 1400          beq       vsprintf_31
+00000E94  6000 0136 1401          bra       vsprintf_22
+                    1402   vsprintf_35:
+00000E98  0C80 0000 1403          cmp.l     #120,D0
+00000E9C  0078      
+00000E9E  6700 00B2 1404          beq       vsprintf_28
+00000EA2  6000 0128 1405          bra       vsprintf_22
+                    1406   vsprintf_24:
+00000EA6  4A2E FFD3 1407          tst.b     -45(A6)
+00000EAA  671A      1408          beq.s     vsprintf_36
+00000EAC  4878 000A 1409          pea       10
+00000EB0  2F03      1410          move.l    D3,-(A7)
+00000EB2  206E 0010 1411          move.l    16(A6),A0
+00000EB6  58AE 0010 1412          addq.l    #4,16(A6)
+00000EBA  2F10      1413          move.l    (A0),-(A7)
+00000EBC  6100 04F8 1414          bsr       _ltoa
+00000EC0  DEFC 000C 1415          add.w     #12,A7
+00000EC4  6018      1416          bra.s     vsprintf_37
+                    1417   vsprintf_36:
+00000EC6  4878 000A 1418          pea       10
+00000ECA  2F03      1419          move.l    D3,-(A7)
+00000ECC  206E 0010 1420          move.l    16(A6),A0
+00000ED0  58AE 0010 1421          addq.l    #4,16(A6)
+00000ED4  2F10      1422          move.l    (A0),-(A7)
+00000ED6  6100 04DE 1423          bsr       _ltoa
+00000EDA  DEFC 000C 1424          add.w     #12,A7
+                    1425   vsprintf_37:
+00000EDE  6000 00FA 1426          bra       vsprintf_23
+                    1427   vsprintf_26:
+00000EE2  4A2E FFD3 1428          tst.b     -45(A6)
+00000EE6  6718      1429          beq.s     vsprintf_38
+00000EE8  4878 000A 1430          pea       10
+00000EEC  2F03      1431          move.l    D3,-(A7)
+00000EEE  206E 0010 1432          move.l    16(A6),A0
+00000EF2  58AE 0010 1433          addq.l    #4,16(A6)
+00000EF6  2F10      1434          move.l    (A0),-(A7)
+00000EF8  4E94      1435          jsr       (A4)
+00000EFA  DEFC 000C 1436          add.w     #12,A7
+00000EFE  6016      1437          bra.s     vsprintf_39
+                    1438   vsprintf_38:
+00000F00  4878 000A 1439          pea       10
+00000F04  2F03      1440          move.l    D3,-(A7)
+00000F06  206E 0010 1441          move.l    16(A6),A0
+00000F0A  58AE 0010 1442          addq.l    #4,16(A6)
+00000F0E  2F10      1443          move.l    (A0),-(A7)
+00000F10  4E94      1444          jsr       (A4)
+00000F12  DEFC 000C 1445          add.w     #12,A7
+                    1446   vsprintf_39:
+00000F16  6000 00C2 1447          bra       vsprintf_23
+                    1448   vsprintf_27:
+00000F1A  4A2E FFD3 1449          tst.b     -45(A6)
+00000F1E  6718      1450          beq.s     vsprintf_40
+00000F20  4878 0008 1451          pea       8
+00000F24  2F03      1452          move.l    D3,-(A7)
+00000F26  206E 0010 1453          move.l    16(A6),A0
+00000F2A  58AE 0010 1454          addq.l    #4,16(A6)
+00000F2E  2F10      1455          move.l    (A0),-(A7)
+00000F30  4E94      1456          jsr       (A4)
+00000F32  DEFC 000C 1457          add.w     #12,A7
+00000F36  6016      1458          bra.s     vsprintf_41
+                    1459   vsprintf_40:
+00000F38  4878 0008 1460          pea       8
+00000F3C  2F03      1461          move.l    D3,-(A7)
+00000F3E  206E 0010 1462          move.l    16(A6),A0
+00000F42  58AE 0010 1463          addq.l    #4,16(A6)
+00000F46  2F10      1464          move.l    (A0),-(A7)
+00000F48  4E94      1465          jsr       (A4)
+00000F4A  DEFC 000C 1466          add.w     #12,A7
+                    1467   vsprintf_41:
+00000F4E  6000 008A 1468          bra       vsprintf_23
+                    1469   vsprintf_28:
+00000F52  4A2E FFD3 1470          tst.b     -45(A6)
+00000F56  6718      1471          beq.s     vsprintf_42
+00000F58  4878 0010 1472          pea       16
+00000F5C  2F03      1473          move.l    D3,-(A7)
+00000F5E  206E 0010 1474          move.l    16(A6),A0
+00000F62  58AE 0010 1475          addq.l    #4,16(A6)
+00000F66  2F10      1476          move.l    (A0),-(A7)
+00000F68  4E94      1477          jsr       (A4)
+00000F6A  DEFC 000C 1478          add.w     #12,A7
+00000F6E  6016      1479          bra.s     vsprintf_43
+                    1480   vsprintf_42:
+00000F70  4878 0010 1481          pea       16
+00000F74  2F03      1482          move.l    D3,-(A7)
+00000F76  206E 0010 1483          move.l    16(A6),A0
+00000F7A  58AE 0010 1484          addq.l    #4,16(A6)
+00000F7E  2F10      1485          move.l    (A0),-(A7)
+00000F80  4E94      1486          jsr       (A4)
+00000F82  DEFC 000C 1487          add.w     #12,A7
+                    1488   vsprintf_43:
+00000F86  6000 0052 1489          bra       vsprintf_23
+                    1490   vsprintf_30:
+00000F8A  206E 0010 1491          move.l    16(A6),A0
+00000F8E  58AE 0010 1492          addq.l    #4,16(A6)
+00000F92  2010      1493          move.l    (A0),D0
+00000F94  2042      1494          move.l    D2,A0
+00000F96  5282      1495          addq.l    #1,D2
+00000F98  1080      1496          move.b    D0,(A0)
+00000F9A  2042      1497          move.l    D2,A0
+00000F9C  4210      1498          clr.b     (A0)
+00000F9E  200D      1499          move.l    A5,D0
+00000FA0  6704      1500          beq.s     vsprintf_44
+00000FA2  200D      1501          move.l    A5,D0
+00000FA4  6002      1502          bra.s     vsprintf_45
+                    1503   vsprintf_44:
+00000FA6  7001      1504          moveq     #1,D0
+                    1505   vsprintf_45:
+00000FA8  2A00      1506          move.l    D0,D5
+00000FAA  6000 002E 1507          bra       vsprintf_23
+                    1508   vsprintf_31:
+00000FAE  206E 0010 1509          move.l    16(A6),A0
+00000FB2  58AE 0010 1510          addq.l    #4,16(A6)
+00000FB6  2610      1511          move.l    (A0),D3
+00000FB8  0C85 FFFF 1512          cmp.l     #-1,D5
+00000FBC  FFFF      
+00000FBE  660A      1513          bne.s     vsprintf_46
+00000FC0  2F03      1514          move.l    D3,-(A7)
+00000FC2  6100 04D8 1515          bsr       _strlen
+00000FC6  584F      1516          addq.w    #4,A7
+00000FC8  2A00      1517          move.l    D0,D5
+                    1518   vsprintf_46:
+00000FCA  600E      1519          bra.s     vsprintf_23
+                    1520   vsprintf_22:
+00000FCC  206E 000C 1521          move.l    12(A6),A0
+00000FD0  2242      1522          move.l    D2,A1
+00000FD2  5282      1523          addq.l    #1,D2
+00000FD4  1290      1524          move.b    (A0),(A1)
+00000FD6  2042      1525          move.l    D2,A0
+00000FD8  4210      1526          clr.b     (A0)
+                    1527   vsprintf_23:
+00000FDA  2F03      1528          move.l    D3,-(A7)
+00000FDC  6100 04BE 1529          bsr       _strlen
+00000FE0  584F      1530          addq.w    #4,A7
+00000FE2  1800      1531          move.b    D0,D4
+00000FE4  206E 000C 1532          move.l    12(A6),A0
+00000FE8  1010      1533          move.b    (A0),D0
+00000FEA  4880      1534          ext.w     D0
+00000FEC  48C0      1535          ext.l     D0
+00000FEE  0C80 0000 1536          cmp.l     #115,D0
+00000FF2  0073      
+00000FF4  6618      1537          bne.s     vsprintf_48
+00000FF6  0C85 0000 1538          cmp.l     #0,D5
+00000FFA  0000      
+00000FFC  6D10      1539          blt.s     vsprintf_48
+00000FFE  4884      1540          ext.w     D4
+00001000  48C4      1541          ext.l     D4
+00001002  B885      1542          cmp.l     D5,D4
+00001004  6F04      1543          ble.s     vsprintf_50
+00001006  1005      1544          move.b    D5,D0
+00001008  6002      1545          bra.s     vsprintf_51
+                    1546   vsprintf_50:
+0000100A  1004      1547          move.b    D4,D0
+                    1548   vsprintf_51:
+0000100C  1800      1549          move.b    D0,D4
+                    1550   vsprintf_48:
+0000100E  206E 000C 1551          move.l    12(A6),A0
+00001012  1010      1552          move.b    (A0),D0
+00001014  4880      1553          ext.w     D0
+00001016  48C0      1554          ext.l     D0
+00001018  0C80 0000 1555          cmp.l     #88,D0
+0000101C  0058      
+0000101E  6600 0026 1556          bne       vsprintf_56
+00001022  41EE FFDC 1557          lea       -36(A6),A0
+00001026  2408      1558          move.l    A0,D2
+                    1559   vsprintf_54:
+00001028  2042      1560          move.l    D2,A0
+0000102A  4A10      1561          tst.b     (A0)
+0000102C  6718      1562          beq.s     vsprintf_56
+0000102E  2042      1563          move.l    D2,A0
+00001030  1210      1564          move.b    (A0),D1
+00001032  4881      1565          ext.w     D1
+00001034  48C1      1566          ext.l     D1
+00001036  2F01      1567          move.l    D1,-(A7)
+00001038  6100 04A4 1568          bsr       _toupper
+0000103C  584F      1569          addq.w    #4,A7
+0000103E  2042      1570          move.l    D2,A0
+00001040  1080      1571          move.b    D0,(A0)
+00001042  5282      1572          addq.l    #1,D2
+00001044  60E2      1573          bra       vsprintf_54
+                    1574   vsprintf_56:
+00001046  7E00      1575          moveq     #0,D7
+00001048  41EE FFD4 1576          lea       -44(A6),A0
+0000104C  2408      1577          move.l    A0,D2
+0000104E  206E 000C 1578          move.l    12(A6),A0
+00001052  1010      1579          move.b    (A0),D0
+00001054  4880      1580          ext.w     D0
+00001056  48C0      1581          ext.l     D0
+00001058  0C80 0000 1582          cmp.l     #100,D0
+0000105C  0064      
+0000105E  6714      1583          beq.s     vsprintf_59
+00001060  206E 000C 1584          move.l    12(A6),A0
+00001064  1010      1585          move.b    (A0),D0
+00001066  4880      1586          ext.w     D0
+00001068  48C0      1587          ext.l     D0
+0000106A  0C80 0000 1588          cmp.l     #105,D0
+0000106E  0069      
+00001070  6600 0076 1589          bne       vsprintf_65
+                    1590   vsprintf_59:
+00001074  4A2E FFCE 1591          tst.b     -50(A6)
+00001078  6612      1592          bne.s     vsprintf_62
+0000107A  2043      1593          move.l    D3,A0
+0000107C  1010      1594          move.b    (A0),D0
+0000107E  4880      1595          ext.w     D0
+00001080  48C0      1596          ext.l     D0
+00001082  0C80 0000 1597          cmp.l     #45,D0
+00001086  002D      
+00001088  6600 002E 1598          bne       vsprintf_60
+                    1599   vsprintf_62:
+0000108C  2043      1600          move.l    D3,A0
+0000108E  1010      1601          move.b    (A0),D0
+00001090  4880      1602          ext.w     D0
+00001092  48C0      1603          ext.l     D0
+00001094  0C80 0000 1604          cmp.l     #45,D0
+00001098  002D      
+0000109A  660E      1605          bne.s     vsprintf_63
+0000109C  2043      1606          move.l    D3,A0
+0000109E  5283      1607          addq.l    #1,D3
+000010A0  2242      1608          move.l    D2,A1
+000010A2  5282      1609          addq.l    #1,D2
+000010A4  1290      1610          move.b    (A0),(A1)
+000010A6  5304      1611          subq.b    #1,D4
+000010A8  6008      1612          bra.s     vsprintf_64
+                    1613   vsprintf_63:
+000010AA  2042      1614          move.l    D2,A0
+000010AC  5282      1615          addq.l    #1,D2
+000010AE  10BC 002B 1616          move.b    #43,(A0)
+                    1617   vsprintf_64:
+000010B2  5287      1618          addq.l    #1,D7
+000010B4  6000 0032 1619          bra       vsprintf_65
+                    1620   vsprintf_60:
+000010B8  4A2E FFCF 1621          tst.b     -49(A6)
+000010BC  6700 002A 1622          beq       vsprintf_65
+000010C0  2043      1623          move.l    D3,A0
+000010C2  1010      1624          move.b    (A0),D0
+000010C4  4880      1625          ext.w     D0
+000010C6  48C0      1626          ext.l     D0
+000010C8  0C80 0000 1627          cmp.l     #45,D0
+000010CC  002D      
+000010CE  660E      1628          bne.s     vsprintf_67
+000010D0  2043      1629          move.l    D3,A0
+000010D2  5283      1630          addq.l    #1,D3
+000010D4  2242      1631          move.l    D2,A1
+000010D6  5282      1632          addq.l    #1,D2
+000010D8  1290      1633          move.b    (A0),(A1)
+000010DA  5304      1634          subq.b    #1,D4
+000010DC  6008      1635          bra.s     vsprintf_68
+                    1636   vsprintf_67:
+000010DE  2042      1637          move.l    D2,A0
+000010E0  5282      1638          addq.l    #1,D2
+000010E2  10BC 0020 1639          move.b    #32,(A0)
+                    1640   vsprintf_68:
+000010E6  5287      1641          addq.l    #1,D7
+                    1642   vsprintf_65:
+000010E8  4A2E FFD0 1643          tst.b     -48(A6)
+000010EC  6700 0066 1644          beq       vsprintf_77
+000010F0  206E 000C 1645          move.l    12(A6),A0
+000010F4  1010      1646          move.b    (A0),D0
+000010F6  4880      1647          ext.w     D0
+000010F8  48C0      1648          ext.l     D0
+000010FA  0C80 0000 1649          cmp.l     #111,D0
+000010FE  006F      
+00001100  671A      1650          beq.s     vsprintf_73
+00001102  6E0C      1651          bgt.s     vsprintf_76
+00001104  0C80 0000 1652          cmp.l     #88,D0
+00001108  0058      
+0000110A  6710      1653          beq.s     vsprintf_73
+0000110C  6000 0046 1654          bra       vsprintf_77
+                    1655   vsprintf_76:
+00001110  0C80 0000 1656          cmp.l     #120,D0
+00001114  0078      
+00001116  6704      1657          beq.s     vsprintf_73
+00001118  6000 003A 1658          bra       vsprintf_77
+                    1659   vsprintf_73:
+0000111C  2042      1660          move.l    D2,A0
+0000111E  5282      1661          addq.l    #1,D2
+00001120  10BC 0030 1662          move.b    #48,(A0)
+00001124  5287      1663          addq.l    #1,D7
+00001126  206E 000C 1664          move.l    12(A6),A0
+0000112A  1010      1665          move.b    (A0),D0
+0000112C  4880      1666          ext.w     D0
+0000112E  48C0      1667          ext.l     D0
+00001130  0C80 0000 1668          cmp.l     #120,D0
+00001134  0078      
+00001136  6712      1669          beq.s     vsprintf_79
+00001138  206E 000C 1670          move.l    12(A6),A0
+0000113C  1010      1671          move.b    (A0),D0
+0000113E  4880      1672          ext.w     D0
+00001140  48C0      1673          ext.l     D0
+00001142  0C80 0000 1674          cmp.l     #88,D0
+00001146  0058      
+00001148  660A      1675          bne.s     vsprintf_77
+                    1676   vsprintf_79:
+0000114A  2042      1677          move.l    D2,A0
+0000114C  5282      1678          addq.l    #1,D2
+0000114E  10BC 0078 1679          move.b    #120,(A0)
+00001152  5287      1680          addq.l    #1,D7
+                    1681   vsprintf_77:
+00001154  2042      1682          move.l    D2,A0
+00001156  4210      1683          clr.b     (A0)
+00001158  206E 000C 1684          move.l    12(A6),A0
+0000115C  1010      1685          move.b    (A0),D0
+0000115E  4880      1686          ext.w     D0
+00001160  48C0      1687          ext.l     D0
+00001162  0C80 0000 1688          cmp.l     #105,D0
+00001166  0069      
+00001168  6700 0076 1689          beq       vsprintf_82
+0000116C  6E42      1690          bgt.s     vsprintf_93
+0000116E  0C80 0000 1691          cmp.l     #99,D0
+00001172  0063      
+00001174  6700 0084 1692          beq       vsprintf_96
+00001178  6E1C      1693          bgt.s     vsprintf_94
+0000117A  0C80 0000 1694          cmp.l     #88,D0
+0000117E  0058      
+00001180  6700 005E 1695          beq       vsprintf_82
+00001184  6E00 0184 1696          bgt       vsprintf_80
+00001188  0C80 0000 1697          cmp.l     #69,D0
+0000118C  0045      
+0000118E  6700 0050 1698          beq       vsprintf_82
+00001192  6000 0176 1699          bra       vsprintf_80
+                    1700   vsprintf_94:
+00001196  0C80 0000 1701          cmp.l     #101,D0
+0000119A  0065      
+0000119C  6700 0042 1702          beq       vsprintf_82
+000011A0  6E00 0168 1703          bgt       vsprintf_80
+000011A4  0C80 0000 1704          cmp.l     #100,D0
+000011A8  0064      
+000011AA  6734      1705          beq.s     vsprintf_82
+000011AC  6000 015C 1706          bra       vsprintf_80
+                    1707   vsprintf_93:
+000011B0  0C80 0000 1708          cmp.l     #117,D0
+000011B4  0075      
+000011B6  6728      1709          beq.s     vsprintf_82
+000011B8  6E1A      1710          bgt.s     vsprintf_95
+000011BA  0C80 0000 1711          cmp.l     #115,D0
+000011BE  0073      
+000011C0  6700 0038 1712          beq       vsprintf_96
+000011C4  6E00 0144 1713          bgt       vsprintf_80
+000011C8  0C80 0000 1714          cmp.l     #111,D0
+000011CC  006F      
+000011CE  6710      1715          beq.s     vsprintf_82
+000011D0  6000 0138 1716          bra       vsprintf_80
+                    1717   vsprintf_95:
+000011D4  0C80 0000 1718          cmp.l     #120,D0
+000011D8  0078      
+000011DA  6704      1719          beq.s     vsprintf_82
+000011DC  6000 012C 1720          bra       vsprintf_80
+                    1721   vsprintf_82:
+000011E0  4A2E FFD2 1722          tst.b     -46(A6)
+000011E4  6714      1723          beq.s     vsprintf_96
+000011E6  4A2E FFCD 1724          tst.b     -51(A6)
+000011EA  660E      1725          bne.s     vsprintf_96
+000011EC  200D      1726          move.l    A5,D0
+000011EE  9087      1727          sub.l     D7,D0
+000011F0  4884      1728          ext.w     D4
+000011F2  48C4      1729          ext.l     D4
+000011F4  9084      1730          sub.l     D4,D0
+000011F6  2D40 FFFC 1731          move.l    D0,-4(A6)
+                    1732   vsprintf_96:
+000011FA  202E FFFC 1733          move.l    -4(A6),D0
+000011FE  0C80 0000 1734          cmp.l     #0,D0
+00001202  0000      
+00001204  6C04      1735          bge.s     vsprintf_98
+00001206  42AE FFFC 1736          clr.l     -4(A6)
+                    1737   vsprintf_98:
+0000120A  4A2E FFCD 1738          tst.b     -51(A6)
+0000120E  6600 0030 1739          bne       vsprintf_104
+00001212  4884      1740          ext.w     D4
+00001214  48C4      1741          ext.l     D4
+00001216  2004      1742          move.l    D4,D0
+00001218  D0AE FFFC 1743          add.l     -4(A6),D0
+0000121C  D087      1744          add.l     D7,D0
+0000121E  1D40 FFD1 1745          move.b    D0,-47(A6)
+                    1746   vsprintf_102:
+00001222  102E FFD1 1747          move.b    -47(A6),D0
+00001226  4880      1748          ext.w     D0
+00001228  48C0      1749          ext.l     D0
+0000122A  220D      1750          move.l    A5,D1
+0000122C  534D      1751          subq.w    #1,A5
+0000122E  B081      1752          cmp.l     D1,D0
+00001230  6C0E      1753          bge.s     vsprintf_104
+00001232  4878 0020 1754          pea       32
+00001236  2F0A      1755          move.l    A2,-(A7)
+00001238  4E93      1756          jsr       (A3)
+0000123A  504F      1757          addq.w    #8,A7
+0000123C  5286      1758          addq.l    #1,D6
+0000123E  60E2      1759          bra       vsprintf_102
+                    1760   vsprintf_104:
+00001240  41EE FFD4 1761          lea       -44(A6),A0
+00001244  2408      1762          move.l    A0,D2
+                    1763   vsprintf_105:
+00001246  2042      1764          move.l    D2,A0
+00001248  4A10      1765          tst.b     (A0)
+0000124A  6716      1766          beq.s     vsprintf_107
+0000124C  2042      1767          move.l    D2,A0
+0000124E  5282      1768          addq.l    #1,D2
+00001250  1210      1769          move.b    (A0),D1
+00001252  4881      1770          ext.w     D1
+00001254  48C1      1771          ext.l     D1
+00001256  2F01      1772          move.l    D1,-(A7)
+00001258  2F0A      1773          move.l    A2,-(A7)
+0000125A  4E93      1774          jsr       (A3)
+0000125C  504F      1775          addq.w    #8,A7
+0000125E  5286      1776          addq.l    #1,D6
+00001260  60E4      1777          bra       vsprintf_105
+                    1778   vsprintf_107:
+00001262  202E FFFC 1779          move.l    -4(A6),D0
+00001266  1D40 FFD1 1780          move.b    D0,-47(A6)
+                    1781   vsprintf_108:
+0000126A  102E FFD1 1782          move.b    -47(A6),D0
+0000126E  532E FFD1 1783          subq.b    #1,-47(A6)
+00001272  4A00      1784          tst.b     D0
+00001274  670E      1785          beq.s     vsprintf_110
+00001276  4878 0030 1786          pea       48
+0000127A  2F0A      1787          move.l    A2,-(A7)
+0000127C  4E93      1788          jsr       (A3)
+0000127E  504F      1789          addq.w    #8,A7
+00001280  5286      1790          addq.l    #1,D6
+00001282  60E6      1791          bra       vsprintf_108
+                    1792   vsprintf_110:
+00001284  2043      1793          move.l    D3,A0
+00001286  4A10      1794          tst.b     (A0)
+00001288  6700 0048 1795          beq       vsprintf_113
+0000128C  206E 000C 1796          move.l    12(A6),A0
+00001290  1010      1797          move.b    (A0),D0
+00001292  4880      1798          ext.w     D0
+00001294  48C0      1799          ext.l     D0
+00001296  0C80 0000 1800          cmp.l     #115,D0
+0000129A  0073      
+0000129C  670C      1801          beq.s     vsprintf_116
+0000129E  6E18      1802          bgt.s     vsprintf_119
+000012A0  0C80 0000 1803          cmp.l     #99,D0
+000012A4  0063      
+000012A6  6702      1804          beq.s     vsprintf_116
+000012A8  600E      1805          bra.s     vsprintf_119
+                    1806   vsprintf_116:
+000012AA  2005      1807          move.l    D5,D0
+000012AC  5385      1808          subq.l    #1,D5
+000012AE  0C80 0000 1809          cmp.l     #0,D0
+000012B2  0000      
+000012B4  6E02      1810          bgt.s     vsprintf_119
+000012B6  6016      1811          bra.s     vsprintf_115
+                    1812   vsprintf_119:
+000012B8  2043      1813          move.l    D3,A0
+000012BA  5283      1814          addq.l    #1,D3
+000012BC  1210      1815          move.b    (A0),D1
+000012BE  4881      1816          ext.w     D1
+000012C0  48C1      1817          ext.l     D1
+000012C2  2F01      1818          move.l    D1,-(A7)
+000012C4  2F0A      1819          move.l    A2,-(A7)
+000012C6  4E93      1820          jsr       (A3)
+000012C8  504F      1821          addq.w    #8,A7
+000012CA  5286      1822          addq.l    #1,D6
+000012CC  6002      1823          bra.s     vsprintf_112
+                    1824   vsprintf_115:
+000012CE  6002      1825          bra.s     vsprintf_113
+                    1826   vsprintf_112:
+000012D0  60B2      1827          bra       vsprintf_110
+                    1828   vsprintf_113:
+000012D2  4A2E FFCD 1829          tst.b     -51(A6)
+000012D6  6700 0030 1830          beq       vsprintf_125
+000012DA  4884      1831          ext.w     D4
+000012DC  48C4      1832          ext.l     D4
+000012DE  2004      1833          move.l    D4,D0
+000012E0  D0AE FFFC 1834          add.l     -4(A6),D0
+000012E4  D087      1835          add.l     D7,D0
+000012E6  1D40 FFD1 1836          move.b    D0,-47(A6)
+                    1837   vsprintf_123:
+000012EA  102E FFD1 1838          move.b    -47(A6),D0
+000012EE  4880      1839          ext.w     D0
+000012F0  48C0      1840          ext.l     D0
+000012F2  220D      1841          move.l    A5,D1
+000012F4  534D      1842          subq.w    #1,A5
+000012F6  B081      1843          cmp.l     D1,D0
+000012F8  6C0E      1844          bge.s     vsprintf_125
+000012FA  4878 0020 1845          pea       32
+000012FE  2F0A      1846          move.l    A2,-(A7)
+00001300  4E93      1847          jsr       (A3)
+00001302  504F      1848          addq.w    #8,A7
+00001304  5386      1849          subq.l    #1,D6
+00001306  60E2      1850          bra       vsprintf_123
+                    1851   vsprintf_125:
+00001308  6014      1852          bra.s     vsprintf_81
+                    1853   vsprintf_80:
+0000130A  206E 000C 1854          move.l    12(A6),A0
+0000130E  1210      1855          move.b    (A0),D1
+00001310  4881      1856          ext.w     D1
+00001312  48C1      1857          ext.l     D1
+00001314  2F01      1858          move.l    D1,-(A7)
+00001316  2F0A      1859          move.l    A2,-(A7)
+00001318  4E93      1860          jsr       (A3)
+0000131A  504F      1861          addq.w    #8,A7
+0000131C  5286      1862          addq.l    #1,D6
+                    1863   vsprintf_81:
+0000131E  52AE 000C 1864          addq.l    #1,12(A6)
+                    1865   vsprintf_2:
+00001322  6000 F9D6 1866          bra       vsprintf_1
+                    1867   vsprintf_3:
+00001326  4A92      1868          tst.l     (A2)
+00001328  6710      1869          beq.s     vsprintf_126
+0000132A  4201      1870          clr.b     D1
+0000132C  C2BC 0000 1871          and.l     #255,D1
+00001330  00FF      
+00001332  2F01      1872          move.l    D1,-(A7)
+00001334  2F0A      1873          move.l    A2,-(A7)
+00001336  4E93      1874          jsr       (A3)
+00001338  504F      1875          addq.w    #8,A7
+                    1876   vsprintf_126:
+0000133A  2006      1877          move.l    D6,D0
+0000133C  4CDF 3CFC 1878          movem.l   (A7)+,D2/D3/D4/D5/D6/D7/A2/A3/A4/A5
+00001340  4E5E      1879          unlk      A6
+00001342  4E75      1880          rts
+                    1881   @itoa_convert:
+00001344  4E56 0000 1882          link      A6,#0
+00001348  48E7 3C00 1883          movem.l   D2/D3/D4/D5,-(A7)
+0000134C  242E 0008 1884          move.l    8(A6),D2
+00001350  262E 0010 1885          move.l    16(A6),D3
+00001354  2A2E 000C 1886          move.l    12(A6),D5
+00001358  2F05      1887          move.l    D5,-(A7)
+0000135A  2F03      1888          move.l    D3,-(A7)
+0000135C  6100 01BC 1889          bsr       ULDIV
+00001360  202F 0004 1890          move.l    4(A7),D0
+00001364  504F      1891          addq.w    #8,A7
+00001366  2800      1892          move.l    D0,D4
+00001368  BA83      1893          cmp.l     D3,D5
+0000136A  651A      1894          blo.s     @itoa_convert_1
+0000136C  2F03      1895          move.l    D3,-(A7)
+0000136E  2F05      1896          move.l    D5,-(A7)
+00001370  2F03      1897          move.l    D3,-(A7)
+00001372  6100 01A6 1898          bsr       ULDIV
+00001376  2217      1899          move.l    (A7),D1
+00001378  504F      1900          addq.w    #8,A7
+0000137A  2F01      1901          move.l    D1,-(A7)
+0000137C  2F02      1902          move.l    D2,-(A7)
+0000137E  61C4      1903          bsr       @itoa_convert
+00001380  DEFC 000C 1904          add.w     #12,A7
+00001384  2400      1905          move.l    D0,D2
+                    1906   @itoa_convert_1:
+00001386  0C84 0000 1907          cmp.l     #9,D4
+0000138A  0009      
+0000138C  6E0A      1908          bgt.s     @itoa_convert_3
+0000138E  2004      1909          move.l    D4,D0
+00001390  0680 0000 1910          add.l     #48,D0
+00001394  0030      
+00001396  600E      1911          bra.s     @itoa_convert_4
+                    1912   @itoa_convert_3:
+00001398  2004      1913          move.l    D4,D0
+0000139A  0680 0000 1914          add.l     #97,D0
+0000139E  0061      
+000013A0  0480 0000 1915          sub.l     #10,D0
+000013A4  000A      
+                    1916   @itoa_convert_4:
+000013A6  2042      1917          move.l    D2,A0
+000013A8  1080      1918          move.b    D0,(A0)
+000013AA  2002      1919          move.l    D2,D0
+000013AC  5280      1920          addq.l    #1,D0
+000013AE  4CDF 003C 1921          movem.l   (A7)+,D2/D3/D4/D5
+000013B2  4E5E      1922          unlk      A6
+000013B4  4E75      1923          rts
+                    1924   _ltoa:
+000013B6  4E56 0000 1925          link      A6,#0
+000013BA  48E7 3C00 1926          movem.l   D2/D3/D4/D5,-(A7)
+000013BE  242E 0008 1927          move.l    8(A6),D2
+000013C2  262E 000C 1928          move.l    12(A6),D3
+000013C6  2A2E 0010 1929          move.l    16(A6),D5
+000013CA  2803      1930          move.l    D3,D4
+000013CC  0C85 0000 1931          cmp.l     #2,D5
+000013D0  0002      
+000013D2  6D08      1932          blt.s     ltoa_3
+000013D4  0C85 0000 1933          cmp.l     #36,D5
+000013D8  0024      
+000013DA  6F06      1934          ble.s     ltoa_1
+                    1935   ltoa_3:
+000013DC  2003      1936          move.l    D3,D0
+000013DE  6000 0052 1937          bra       ltoa_4
+                    1938   ltoa_1:
+000013E2  0C85 0000 1939          cmp.l     #10,D5
+000013E6  000A      
+000013E8  6600 0032 1940          bne       ltoa_5
+000013EC  0C82 0000 1941          cmp.l     #0,D2
+000013F0  0000      
+000013F2  6C28      1942          bge.s     ltoa_5
+000013F4  2002      1943          move.l    D2,D0
+000013F6  4480      1944          neg.l     D0
+000013F8  2400      1945          move.l    D0,D2
+000013FA  0C82 0000 1946          cmp.l     #0,D2
+000013FE  0000      
+00001400  6C12      1947          bge.s     ltoa_7
+00001402  4879 0001 1948          pea       @itoa_1
+00001406  EAE6      
+00001408  2F03      1949          move.l    D3,-(A7)
+0000140A  6100 00FE 1950          bsr       _strcpy
+0000140E  504F      1951          addq.w    #8,A7
+00001410  2003      1952          move.l    D3,D0
+00001412  601E      1953          bra.s     ltoa_4
+                    1954   ltoa_7:
+00001414  2044      1955          move.l    D4,A0
+00001416  5284      1956          addq.l    #1,D4
+00001418  10BC 002D 1957          move.b    #45,(A0)
+                    1958   ltoa_5:
+0000141C  2F05      1959          move.l    D5,-(A7)
+0000141E  2F02      1960          move.l    D2,-(A7)
+00001420  2F04      1961          move.l    D4,-(A7)
+00001422  6100 FF20 1962          bsr       @itoa_convert
+00001426  DEFC 000C 1963          add.w     #12,A7
+0000142A  2800      1964          move.l    D0,D4
+0000142C  2044      1965          move.l    D4,A0
+0000142E  4210      1966          clr.b     (A0)
+00001430  2003      1967          move.l    D3,D0
+                    1968   ltoa_4:
+00001432  4CDF 003C 1969          movem.l   (A7)+,D2/D3/D4/D5
+00001436  4E5E      1970          unlk      A6
+00001438  4E75      1971          rts
+                    1972   _ultoa:
+0000143A  4E56 0000 1973          link      A6,#0
+0000143E  48E7 3800 1974          movem.l   D2/D3/D4,-(A7)
+00001442  262E 0010 1975          move.l    16(A6),D3
+00001446  282E 000C 1976          move.l    12(A6),D4
+0000144A  2404      1977          move.l    D4,D2
+0000144C  0C83 0000 1978          cmp.l     #2,D3
+00001450  0002      
+00001452  6D08      1979          blt.s     ultoa_3
+00001454  0C83 0000 1980          cmp.l     #36,D3
+00001458  0024      
+0000145A  6F04      1981          ble.s     ultoa_1
+                    1982   ultoa_3:
+0000145C  2004      1983          move.l    D4,D0
+0000145E  6018      1984          bra.s     ultoa_4
+                    1985   ultoa_1:
+00001460  2F03      1986          move.l    D3,-(A7)
+00001462  2F2E 0008 1987          move.l    8(A6),-(A7)
+00001466  2F02      1988          move.l    D2,-(A7)
+00001468  6100 FEDA 1989          bsr       @itoa_convert
+0000146C  DEFC 000C 1990          add.w     #12,A7
+00001470  2400      1991          move.l    D0,D2
+00001472  2042      1992          move.l    D2,A0
+00001474  4210      1993          clr.b     (A0)
+00001476  2004      1994          move.l    D4,D0
+                    1995   ultoa_4:
+00001478  4CDF 001C 1996          movem.l   (A7)+,D2/D3/D4
+0000147C  4E5E      1997          unlk      A6
+0000147E  4E75      1998          rts
+                    1999   _itoa:
+00001480  4E56 0000 2000          link      A6,#0
+00001484  2F2E 0010 2001          move.l    16(A6),-(A7)
+00001488  2F2E 000C 2002          move.l    12(A6),-(A7)
+0000148C  2F2E 0008 2003          move.l    8(A6),-(A7)
+00001490  6100 FF24 2004          bsr       _ltoa
+00001494  DEFC 000C 2005          add.w     #12,A7
+00001498  4E5E      2006          unlk      A6
+0000149A  4E75      2007          rts
+                    2008   _strlen:
+0000149C  206F 0004 2009          move.l    (4,A7),A0
+000014A0  2248      2010          move.l    A0,A1
+                    2011   strlen_1:
+000014A2  4A19      2012          tst.b     (A1)+
+000014A4  66FC      2013          bne       strlen_1
+000014A6  2009      2014          move.l    A1,D0
+000014A8  9088      2015          sub.l     A0,D0
+000014AA  5380      2016          subq.l    #1,D0
+000014AC  4E75      2017          rts
+                    2018   _putch:
+000014AE  4E56 0000 2019          link      A6,#0
+000014B2  48E7 2000 2020          movem.l   D2,-(A7)
+000014B6  242E 0008 2021          move.l    8(A6),D2
+000014BA  0C82 0000 2022          cmp.l     #10,D2
+000014BE  000A      
+000014C0  660A      2023          bne.s     putch_1
+000014C2  4878 000D 2024          pea       13
+000014C6  6100 EB4A 2025          bsr       __putch
+000014CA  584F      2026          addq.w    #4,A7
+                    2027   putch_1:
+000014CC  2F02      2028          move.l    D2,-(A7)
+000014CE  6100 EB42 2029          bsr       __putch
+000014D2  584F      2030          addq.w    #4,A7
+000014D4  2002      2031          move.l    D2,D0
+000014D6  4CDF 0004 2032          movem.l   (A7)+,D2
+000014DA  4E5E      2033          unlk      A6
+000014DC  4E75      2034          rts
+                    2035   _toupper:
+000014DE  4E56 0000 2036          link      A6,#0
+000014E2  48E7 2000 2037          movem.l   D2,-(A7)
+000014E6  242E 0008 2038          move.l    8(A6),D2
+000014EA  0C82 0000 2039          cmp.l     #97,D2
+000014EE  0061      
+000014F0  6D0E      2040          blt.s     toupper_1
+000014F2  0C82 0000 2041          cmp.l     #122,D2
+000014F6  007A      
+000014F8  6E06      2042          bgt.s     toupper_1
+000014FA  C4BC 0000 2043          and.l     #95,D2
+000014FE  005F      
+                    2044   toupper_1:
+00001500  2002      2045          move.l    D2,D0
+00001502  4CDF 0004 2046          movem.l   (A7)+,D2
+00001506  4E5E      2047          unlk      A6
+00001508  4E75      2048          rts
+                    2049   _strcpy:
+0000150A  206F 0004 2050          move.l    (4,A7),A0
+0000150E  226F 0008 2051          move.l    (8,A7),A1
+00001512  2008      2052          move.l    A0,D0
+                    2053   strcpy_1:
+00001514  10D9      2054          move.b    (A1)+,(A0)+
+00001516  66FC      2055          bne       strcpy_1
+00001518  4E75      2056          rts
+                    2057   ULDIV:
+0000151A  4E56 0000 2058          link    A6,#0
+0000151E  48E7 C000 2059          movem.l D0/D1,-(A7)
+00001522  222E 0008 2060          move.l  8(A6),D1
+00001526  202E 000C 2061          move.l  12(A6),D0
+0000152A  6036      2062          bra.s   ldiv_3
+                    2063   LDIV:
+0000152C  4E56 0000 2064          link    A6,#0
+00001530  48E7 C000 2065          movem.l D0/D1,-(A7)
+00001534  222E 0008 2066          move.l  8(A6),D1
+00001538  202E 000C 2067          move.l  12(A6),D0
+0000153C  4A80      2068          tst.l   D0
+0000153E  6A0E      2069          bpl.s   ldiv_1
+00001540  4480      2070          neg.l   D0
+00001542  4A81      2071          tst.l   D1
+00001544  6A14      2072          bpl.s   ldiv_2
+00001546  4481      2073          neg.l   D1
+00001548  612A      2074          bsr.s   dodiv
+0000154A  4481      2075          neg.l   D1
+0000154C  6016      2076          bra.s   ldiv_4
+                    2077   ldiv_1:
+0000154E  4A81      2078          tst.l   D1
+00001550  6A10      2079          bpl.s   ldiv_3
+00001552  4481      2080          neg.l   D1
+00001554  611E      2081          bsr.s   dodiv
+00001556  4480      2082          neg.l   D0
+00001558  600A      2083          bra.s   ldiv_4
+                    2084   ldiv_2:
+0000155A  6118      2085          bsr.s   dodiv
+0000155C  4480      2086          neg.l   D0
+0000155E  4481      2087          neg.l   D1
+00001560  6002      2088          bra.s   ldiv_4
+                    2089   ldiv_3:
+00001562  6110      2090          bsr.s   dodiv
+                    2091   ldiv_4:
+00001564  2D40 0008 2092          move.l  D0,8(A6)
+00001568  2D41 000C 2093          move.l  D1,12(A6)
+0000156C  4CDF 0003 2094          movem.l (A7)+,D0/D1
+00001570  4E5E      2095          unlk    A6
+00001572  4E75      2096          rts
+                    2097   dodiv:
+00001574  0C81 0000 2098          cmpi.l  #$FFFF,D1
+00001578  FFFF      
+0000157A  6236      2099          bhi.s   dodiv_2
+0000157C  0C80 0000 2100          cmpi.l  #$FFFF,D0
+00001580  FFFF      
+00001582  6210      2101          bhi.s   dodiv_1
+00001584  80C1      2102          divu    D1,D0
+00001586  2200      2103          move.l  D0,D1
+00001588  4241      2104          clr.w   D1
+0000158A  4841      2105          swap    D1
+0000158C  0280 0000 2106          andi.l  #$FFFF,D0
+00001590  FFFF      
+00001592  4E75      2107          rts
+                    2108   dodiv_1:
+00001594  48A7 A000 2109          movem.w D0/D2,-(A7)
+00001598  4240      2110          clr.w   D0
+0000159A  4840      2111          swap    D0
+0000159C  80C1      2112          divu    D1,D0
+0000159E  3400      2113          move.w  D0,D2
+000015A0  301F      2114          move.w  (A7)+,D0
+000015A2  80C1      2115          divu    D1,D0
+000015A4  4840      2116          swap    D0
+000015A6  4281      2117          clr.l   D1
+000015A8  3200      2118          move.w  D0,D1
+000015AA  3002      2119          move.w  D2,D0
+000015AC  4840      2120          swap    D0
+000015AE  341F      2121          move.w  (A7)+,D2
+000015B0  4E75      2122          rts
+                    2123   dodiv_2:
+000015B2  48E7 3800 2124          movem.l D2/D3/D4,-(A7)
+000015B6  2401      2125          move.l  D1,D2
+000015B8  4242      2126          clr.w   D2
+000015BA  4842      2127          swap    D2
+000015BC  5282      2128          addq.l  #1,D2
+000015BE  2600      2129          move.l  D0,D3
+000015C0  2801      2130          move.l  D1,D4
+000015C2  2202      2131          move.l  D2,D1
+000015C4  61CE      2132          bsr.s   dodiv_1
+000015C6  2204      2133          move.l  D4,D1
+000015C8  82C2      2134          divu    D2,D1
+000015CA  80C1      2135          divu    D1,D0
+000015CC  0280 0000 2136          andi.l  #$FFFF,D0
+000015D0  FFFF      
+                    2137   dodiv_3:
+000015D2  2204      2138          move.l  D4,D1
+000015D4  2404      2139          move.l  D4,D2
+000015D6  4842      2140          swap    D2
+000015D8  C2C0      2141          mulu    D0,D1
+000015DA  C4C0      2142          mulu    D0,D2
+000015DC  4842      2143          swap    D2
+000015DE  D282      2144          add.l   D2,D1
+000015E0  9283      2145          sub.l   D3,D1
+000015E2  620A      2146          bhi.s   dodiv_4
+000015E4  4481      2147          neg.l   D1
+000015E6  B881      2148          cmp.l   D1,D4
+000015E8  6208      2149          bhi.s   dodiv_5
+000015EA  5280      2150          addq.l  #1,D0
+000015EC  60E4      2151          bra.s   dodiv_3
+                    2152   dodiv_4:
+000015EE  5380      2153          subq.l  #1,D0
+000015F0  60E0      2154          bra.s   dodiv_3
+                    2155   dodiv_5:
+000015F2  4CDF 001C 2156          movem.l (A7)+,D2/D3/D4
+000015F6  4E75      2157          rts
+                    2158          section   const
+                    2159   @speedt~1_1:
+000015F8  0A0A 5374 2160          dc.b      10,10,83,116,97,114,116,46,46,46,46,46,0
+000015FC  6172 742E 
+00001600  2E2E 2E2E 
+00001604  00        
+                    2161   @speedt~1_2:
+00001606  2564 2000 2162          dc.b      37,100,32,0
+                    2163   @speedt~1_3:
+0000160A  0A0A 446F 2164          dc.b      10,10,68,111,110,101,46,46,46,46,46,0
+0000160E  6E65 2E2E 
+00001612  2E2E 2E00 
+                    2165          section   bss
+                    2166   _a:
+00001616            2167          ds.b      40000
+                    2168   _b:
+0000B256            2169          ds.b      40000
+                    2170   _c:
+00014E96            2171          ds.b      40000
+                    2172   _i:
+0001EAD6            2173          ds.b      4
+                    2174   _j:
+0001EADA            2175          ds.b      4
+                    2176   _k:
+0001EADE            2177          ds.b      4
+                    2178   _sum:
+0001EAE2            2179          ds.b      4
+                    2180          section   data
+                    2181   @itoa_1:
+0001EAE6  2D32 3134 2182          dc.b      45,50,49,52,55,52,56,51,54,52,56,0
+0001EAEA  3734 3833 
+0001EAEE  3634 3800 
+          0000 0000
+
+Assembly errors: 0

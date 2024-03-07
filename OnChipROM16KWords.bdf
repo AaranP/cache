@@ -227,20 +227,20 @@ refer to the applicable agreement for further details.
 	(bus)
 )
 (connector
-	(pt 256 208)
-	(pt 264 208)
-)
-(connector
-	(pt 264 208)
-	(pt 288 208)
-)
-(connector
 	(pt 336 208)
 	(pt 392 208)
 )
 (connector
 	(pt 392 208)
 	(pt 408 208)
+)
+(connector
+	(pt 256 208)
+	(pt 264 208)
+)
+(connector
+	(pt 264 208)
+	(pt 288 208)
 )
 (connector
 	(pt 248 -40)

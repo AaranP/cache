@@ -21,9 +21,9 @@ refer to the applicable agreement for further details.
 (header "graphic" (version "1.4"))
 (pin
 	(input)
-	(rect 96 248 264 264)
+	(rect 368 376 536 392)
 	(text "INPUT" (rect 125 0 153 10)(font "Arial" (font_size 6)))
-	(text "ValidityBitin" (rect 5 0 63 17)(font "Intel Clear" ))
+	(text "ValidityBitIn" (rect 5 0 65 12)(font "Arial" ))
 	(pt 168 8)
 	(drawing
 		(line (pt 84 12)(pt 109 12))
@@ -37,7 +37,7 @@ refer to the applicable agreement for further details.
 )
 (pin
 	(input)
-	(rect 96 264 264 280)
+	(rect 368 416 536 432)
 	(text "INPUT" (rect 125 0 153 10)(font "Arial" (font_size 6)))
 	(text "WE_L" (rect 5 0 34 17)(font "Intel Clear" ))
 	(pt 168 8)
@@ -53,7 +53,7 @@ refer to the applicable agreement for further details.
 )
 (pin
 	(input)
-	(rect 96 280 264 296)
+	(rect 368 448 536 464)
 	(text "INPUT" (rect 125 0 153 10)(font "Arial" (font_size 6)))
 	(text "Index[4..0]" (rect 5 0 54 17)(font "Intel Clear" ))
 	(pt 168 8)
@@ -69,7 +69,7 @@ refer to the applicable agreement for further details.
 )
 (pin
 	(input)
-	(rect 112 328 280 344)
+	(rect 368 488 536 504)
 	(text "INPUT" (rect 125 0 153 10)(font "Arial" (font_size 6)))
 	(text "Clock" (rect 5 0 33 17)(font "Intel Clear" ))
 	(pt 168 8)
@@ -85,7 +85,7 @@ refer to the applicable agreement for further details.
 )
 (pin
 	(output)
-	(rect 640 248 816 264)
+	(rect 1000 400 1176 416)
 	(text "OUTPUT" (rect 1 0 39 10)(font "Arial" (font_size 6)))
 	(text "ValidityBitOut" (rect 90 0 157 12)(font "Arial" ))
 	(pt 0 8)
@@ -100,7 +100,7 @@ refer to the applicable agreement for further details.
 	)
 )
 (symbol
-	(rect 376 224 592 352)
+	(rect 744 376 960 504)
 	(text "Valid_Data" (rect 77 0 151 16)(font "Arial" (font_size 10)))
 	(text "inst" (rect 8 112 25 124)(font "Arial" ))
 	(port
@@ -184,9 +184,9 @@ refer to the applicable agreement for further details.
 	)
 )
 (symbol
-	(rect 304 256 352 288)
+	(rect 568 408 616 440)
 	(text "NOT" (rect 1 0 21 10)(font "Arial" (font_size 6)))
-	(text "inst1" (rect 3 21 25 38)(font "Intel Clear" ))
+	(text "inst2" (rect 3 21 25 38)(font "Intel Clear" ))
 	(port
 		(pt 0 16)
 		(input)
@@ -209,26 +209,53 @@ refer to the applicable agreement for further details.
 	)
 )
 (connector
-	(pt 264 272)
-	(pt 304 272)
+	(pt 616 424)
+	(pt 744 424)
 )
 (connector
-	(pt 352 272)
-	(pt 376 272)
+	(pt 536 424)
+	(pt 568 424)
 )
 (connector
-	(pt 264 256)
-	(pt 376 256)
+	(pt 536 384)
+	(pt 680 384)
 )
 (connector
-	(pt 264 288)
-	(pt 376 288)
+	(pt 680 384)
+	(pt 680 408)
 )
 (connector
-	(pt 280 336)
-	(pt 376 336)
+	(pt 680 408)
+	(pt 744 408)
 )
 (connector
-	(pt 592 256)
-	(pt 640 256)
+	(pt 536 496)
+	(pt 680 496)
+)
+(connector
+	(pt 680 496)
+	(pt 680 488)
+)
+(connector
+	(pt 680 488)
+	(pt 744 488)
+)
+(connector
+	(pt 536 456)
+	(pt 680 456)
+	(bus)
+)
+(connector
+	(pt 744 440)
+	(pt 680 440)
+	(bus)
+)
+(connector
+	(pt 680 440)
+	(pt 680 456)
+	(bus)
+)
+(connector
+	(pt 960 408)
+	(pt 1000 408)
 )

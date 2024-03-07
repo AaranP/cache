@@ -158,10 +158,10 @@ module M68kDramController_Verilog (
 
    always@(posedge Clock, negedge Reset_L)
 	begin
-		if(Reset_L == 0) 							// asynchronous reset
+		if(Reset_L == 0) begin							// asynchronous reset
 			CurrentState <= InitialisingState ;
-			
-		else 	begin									// state can change only on low-to-high transition of clock
+			ResetOut_L   <= 0;
+		end else 	begin									// state can change only on low-to-high transition of clock
 			CurrentState <= NextState;		
 
 			// these are the raw signals that come from the dram controller to the dram memory chip. 

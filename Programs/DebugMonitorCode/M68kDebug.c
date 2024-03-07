@@ -502,283 +502,28 @@ void MemoryChange(void)
     }
 }
 
-
-/*************************************************************
-** SPI Controller registers
-**************************************************************/
-// SPI Registers
-#define SPI_Control (*(volatile unsigned char *)(0x00408020))
-#define SPI_Status (*(volatile unsigned char *)(0x00408022))
-#define SPI_Data (*(volatile unsigned char *)(0x00408024))
-#define SPI_Ext (*(volatile unsigned char *)(0x00408026))
-#define SPI_CS (*(volatile unsigned char *)(0x00408028))
-// these two macros enable or disable the flash memory chip enable off SSN_O[7..0]
-// in this case we assume there is only 1 device connected to SSN_O[0] so we can
-// write hex FE to the SPI_CS to enable it (the enable on the flash chip is active low)
-// and write FF to disable it
-#define Enable_SPI_CS() SPI_CS = 0xFE
-#define Disable_SPI_CS() SPI_CS = 0xFF
-/******************************************************************************************
-** The following code is for the SPI controller
-*******************************************************************************************/
-// return true if the SPI has finished transmitting a byte (to say the Flash chip) return false otherwise
-// this can be used in a polling algorithm to know when the controller is busy or idle.
-int TestForSPITransmitDataComplete(void) {
-/* TODO replace 0 below with a test for status register SPIF bit and if set, return true */
-
-/*Parsa Comments
-SPIF comes from the status of the SPI_Status bit 7 being 1.
-*/
-
-if(SPI_Status & (1 << 7) == 1)
-    return 1;
-else 
-    return 0;
-}
-
-/************************************************************************************
-** initialises the SPI controller chip to set speed, interrupt capability etc.
-************************************************************************************/
-void SPI_Init(void)
-{
-//TODO
-//
-// Program the SPI Control, EXT, CS and Status registers to initialise the SPI controller
-// Don't forget to call this routine from main() before you do anything else with SPI
-//
-// Here are some settings we want to create
-//
-// Control Reg - interrupts disabled, core enabled, Master mode, Polarity and Phase of clock = [0,0], speed = divide by 32 = approx 700Khz
-// Ext Reg - in conjunction with control reg, sets speed above and also sets interrupt flag after every completed transfer (each byte)
-// SPI_CS Reg - control selection of slave SPI chips via their CS# signals
-// Status Reg - status of SPI controller chip and used to clear any write collision and interrupt on transmit complete flag
-
-SPI_Control = 0x53;
-
-SPI_Ext = 0x00;
-
-Enable_SPI_CS();
-
-SPI_Status = 0xC0;
-
-}
-/************************************************************************************
-** return ONLY when the SPI controller has finished transmitting a byte
-************************************************************************************/
-void WaitForSPITransmitComplete(void)
-{
-// TODO : poll the status register SPIF bit looking for completion of transmission
-// once transmission is complete, clear the write collision and interrupt on transmit complete flags in the status register (read documentation)
-// just in case they were set
-
-    while(!TestForSPITransmitDataComplete()){
-    }
-    //Clears write collision and interrupt in SPSR[7:6] 0xC0 == 0b1100_0000
-    SPI_Status |= 0xC0;
-}
-
-/************************************************************************************
-** Write a byte to the SPI flash chip via the controller and returns (reads) whatever was
-** given back by SPI device at the same time (removes the read byte from the FIFO)
-************************************************************************************/
-int WriteSPIChar(int c)
-{
-// todo - write the byte in parameter 'c' to the SPI data register, this will start it transmitting to the flash device
-// wait for completion of transmission
-// return the received data from Flash chip (which may not be relevent depending upon what we are doing)
-// by reading fom the SPI controller Data Register.
-// note however that in order to get data from an SPI slave device (e.g. flash) chip we have to write a dummy byte to it
-//
-// modify '0' below to return back read byte from data register
-//
-
-//Parsa: I'm pretty sure the dummy variable that needs to be written is just this line below which is already asked to be done by the todo above anyway
-SPI_Data = c;
-
-WaitForSPITransmitComplete();
-return SPI_Data;
-
-}
-
-
-void SPI_Write_Enable() {
-    SPI_CS = 0;
-    WriteSPIChar(0x06);
-    SPI_CS = 1;
-
-    return;
-}
-
-void SPI_Write_Disable() {
-    SPI_CS = 0;
-    WriteSPIChar(0x04);
-    SPI_CS = 1;
-
-    return;
-}
-//General SPI command function
-void SPI_Command(int cmd){
-    Enable_SPI_CS();
-    WriteSPIChar(cmd);
-    Disable_SPI_CS();
-}
-
-//Wait for SPI write complete /check if SPI is busy
-void Wait_SPI_Write_Complete(){
-    Enable_SPI_CS();
-    // status register (SPSR) reset value: 0x05
-    WriteSPIChar(0x05);
-    // WriteSPIChar will return received data, if bit 0 (RFEMPTY) is high,
-    // FIFO is empty and write is complete
-    while(WriteSPIChar(0x00)&0x01);
-    Disable_SPI_CS();
-}
-
-//Erase SPI chip data
-void EraseSPI(void){
-    SPI_Write_Enable();
-    SPI_Command(0xC7);
-    Wait_SPI_Write_Complete();
-    SPI_Write_Disable();
-}
-
-
 /*******************************************************************
 ** Write a program to SPI Flash Chip from memory and verify by reading back
 ********************************************************************/
 
-#define RAM_START 0x08000000
-#define RAM_END 0x08040000
-#define RAM_START 0x08000000
-#define RAM_END 0x08040000
-
-void ProgramFlashChip(void){
+void ProgramFlashChip(void)
+{
     //
     // TODO : put your code here to program the 1st 256k of ram (where user program is held at hex 08000000) to SPI flash chip
     // TODO : then verify by reading it back and comparing to memory
     //
-    unsigned char *RamPtr = 0x08000000;
-    // Define a variable to store the flash address
-    int flash_addr = 0x000000;
-
-    int i = 0;
-    int j = 0;
-
-    SPI_Write_Enable();
-
-    // Write the data from the RAM to the SPI flash chip
-    while (RamPtr < (int *)RAM_END){
-        //Send Page Program Instruction
-        WriteSPIChar(0x02);
-        WriteSPIChar((flash_addr >> 16));
-        WriteSPIChar((flash_addr >> 8));
-        WriteSPIChar(flash_addr);
-
-        // Copy the data from the RAM to the tx buffer
-
-
-        while (i < 64){
-            WriteSPIChar(*RamPtr++);
-            i++;
-        }
-        // Increment the flash address by 256 bytes
-        flash_addr += 0x100;
-    }
-
-    // Disable the write protection of the SPI flash chip
-    //Disable_SPI_CS();
-    SPI_Write_Disable();
-
-    // Reset the pointer to the start of the RAM
-    RamPtr = (int *)RAM_START;
-
-    // Reset the flash address to 0x000000
-    flash_addr = 0x000000;
-
-    // Read the data from the SPI flash chip and compare with the RAM
-    while (RamPtr < (int *)RAM_END)
-    {
-        // Send the READ command and the flash address
-        WriteSPIChar(0x03);
-        WriteSPIChar((flash_addr >> 16) & 0xFF);
-        WriteSPIChar((flash_addr >> 8) & 0xFF);
-        WriteSPIChar(flash_addr & 0xFF);
-
-        // Compare the data in the rx buffer with the RAM
-        for (j = 0; j < 64; j++)
-        {
-            if (WriteSPIChar(0x00) != *RamPtr++)
-            {
-                // Report an error if the data does not match
-                printf("Error: Data mismatch at address 0x%06X\n", flash_addr + j*4);
-                return;
-            }
-        }
-
-        // Increment the flash address by 256 bytes
-        flash_addr += 0x100;
-    }
-
-    // Report success if the data matches
-    printf("Success: Data verified\n");
-
-    return 0;
 }
-
-    #define RAM_START 0x08000000
-    #define RAM_END 0x08040000
-    #define FLASH_START 0x000000
-    #define FLASH_END 0x004000
-
 
 /*************************************************************************
 ** Load a program from SPI Flash Chip and copy to Dram
 **************************************************************************/
 void LoadFromFlashChip(void)
 {
-    int *RamPtr = (int *)RAM_START;
-
-    // Define a variable to store the flash address
-    int flash_addr = FLASH_START;
-    int i;    
-
     printf("\r\nLoading Program From SPI Flash....") ;
 
     //
     // TODO : put your code here to read 256k of data from SPI flash chip and store in user ram starting at hex 08000000
     //
-    printf("\r\nLoading Program From SPI Flash....") ;
-
-    // Define the start and end addresses of the RAM and the flash chip
-
-
-    // Define a pointer to access the RAM
-
-
-    // Initialize the SPI flash chip
-    SPI_Init();
-
-    // Read the data from the flash chip and copy to the RAM
-    while (RamPtr < (int *)RAM_END)
-    {
-        // Send the READ command and the flash address
-        WriteSPIChar(0x03);
-        WriteSPIChar((flash_addr >> 16) & 0xFF);
-        WriteSPIChar((flash_addr >> 8) & 0xFF);
-        WriteSPIChar(flash_addr & 0xFF);
-
-        // Receive the data from the flash chip and copy to the RAM
-        for (i = 0; i < 64; i++)
-        {
-            *RamPtr++ = WriteSPIChar(0x00);
-        }
-
-        // Increment the flash address by 256 bytes
-        flash_addr += 0x100;
-    }
-
-    // Close the SPI flash chip
-    Disable_SPI_CS();
 
 }
 
@@ -1794,8 +1539,8 @@ void main(void)
     char c ;
     int i, j ;
 
-    char *BugMessage = "Lab3";
-    char *CopyrightMessage = "Aaran Poon 36228203\nParsa Keshmiri 35727379";
+    char *BugMessage = "Lab2 Dram LOL";
+    char *CopyrightMessage = "Aaran Poon 36228203";
 
     KillAllBreakPoints() ;
 
